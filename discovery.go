@@ -699,6 +699,8 @@ func quotaForSource(source PeerSource, cfg PeerSelectionConfig) (peerQuotaClass,
 		return peerQuotaClassTopology, cfg.TopologyQuota
 	}
 	switch source {
+	case PeerSourceTopologyLocalRoot, PeerSourceTopologyPublic, PeerSourceTopologyBootstrap, PeerSourceStatic:
+		return peerQuotaClassTopology, cfg.TopologyQuota
 	case PeerSourcePeerSharing:
 		return peerQuotaClassSharing, cfg.PeerShareQuota
 	case PeerSourceLedger:
@@ -713,9 +715,10 @@ func isTopologyQuotaSource(source PeerSource) bool {
 	switch source {
 	case PeerSourceTopologyLocalRoot, PeerSourceTopologyPublic, PeerSourceTopologyBootstrap, PeerSourceStatic:
 		return true
-	default:
+	case PeerSourcePeerSharing, PeerSourceLedger, PeerSourceBigLedger:
 		return false
 	}
+	return false
 }
 
 func sortPeers(peers []Peer) {

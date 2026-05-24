@@ -23,15 +23,17 @@ import (
 	pcommon "github.com/blinklabs-io/gouroboros/protocol/common"
 )
 
-type DmqMessage = pcommon.DmqMessage
-type DmqMessagePayload = pcommon.DmqMessagePayload
-type OperationalCertificate = pcommon.OperationalCertificate
-type MessageIDAndSize = pcommon.MessageIDAndSize
-type RejectReason = pcommon.RejectReason
-type InvalidReason = pcommon.InvalidReason
-type AlreadyReceivedReason = pcommon.AlreadyReceivedReason
-type ExpiredReason = pcommon.ExpiredReason
-type OtherReason = pcommon.OtherReason
+type (
+	DmqMessage             = pcommon.DmqMessage
+	DmqMessagePayload      = pcommon.DmqMessagePayload
+	OperationalCertificate = pcommon.OperationalCertificate
+	MessageIDAndSize       = pcommon.MessageIDAndSize
+	RejectReason           = pcommon.RejectReason
+	InvalidReason          = pcommon.InvalidReason
+	AlreadyReceivedReason  = pcommon.AlreadyReceivedReason
+	ExpiredReason          = pcommon.ExpiredReason
+	OtherReason            = pcommon.OtherReason
+)
 
 type Clock interface {
 	Now() time.Time
