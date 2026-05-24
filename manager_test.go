@@ -653,6 +653,27 @@ func TestFileSignerSignsAndVerifies(t *testing.T) {
 	}
 }
 
+func TestPayloadSigningBytesClearsLegacyMessageID(t *testing.T) {
+	payload := DmqMessagePayload{
+		MessageID:   []byte("legacy"),
+		MessageBody: []byte("body"),
+		KESPeriod:   5,
+		ExpiresAt:   uint32(time.Now().Add(time.Minute).Unix()),
+	}
+	withLegacyID, err := PayloadSigningBytes(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload.MessageID = nil
+	withoutLegacyID, err := PayloadSigningBytes(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(withLegacyID) != string(withoutLegacyID) {
+		t.Fatal("legacy payload message ID changed signing bytes")
+	}
+}
+
 func TestFileSignerKESPeriodFuncCanAccessSigner(t *testing.T) {
 	dir := t.TempDir()
 	kesPath, opcertPath := writeSignerFixtures(t, dir, 5)

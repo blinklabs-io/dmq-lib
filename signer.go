@@ -131,7 +131,7 @@ func (s *FileSigner) Sign(ctx context.Context, topic string, payload DmqMessageP
 	if err := s.evolveToRelativePeriod(relativePeriod); err != nil {
 		return nil, err
 	}
-	wrappedPayload, err := wrappedPayloadCBOR(payload)
+	wrappedPayload, err := PayloadSigningBytes(payload)
 	if err != nil {
 		return nil, err
 	}
@@ -204,7 +204,7 @@ func (s *FileSigner) Verify(msg *DmqMessage) (bool, error) {
 	if msg == nil {
 		return false, errors.New("message is nil")
 	}
-	wrappedPayload, err := wrappedPayloadCBOR(msg.Payload)
+	wrappedPayload, err := PayloadSigningBytes(msg.Payload)
 	if err != nil {
 		return false, err
 	}
@@ -252,7 +252,9 @@ func (s *FileSigner) evolveToRelativePeriod(period uint64) error {
 	return nil
 }
 
-func wrappedPayloadCBOR(payload DmqMessagePayload) ([]byte, error) {
+// PayloadSigningBytes returns the CBOR byte string that CIP-0137 signs for a
+// DMQ message payload.
+func PayloadSigningBytes(payload DmqMessagePayload) ([]byte, error) {
 	payload.MessageID = nil
 	payloadCBOR, err := cbor.Encode(payload)
 	if err != nil {
