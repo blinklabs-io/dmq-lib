@@ -97,6 +97,39 @@ type ReconnectConfig struct {
 	MaxBackoff     time.Duration
 }
 
+type NodeToNodeConfig struct {
+	// ListenAddress enables a DMQ node-to-node TCP listener. Empty disables
+	// inbound connections.
+	ListenAddress string
+
+	// Peers are additional node-to-node peers to dial. Peers configured on the
+	// topic's Discovery config are also dialed when the service starts.
+	Peers []Peer
+
+	// RequestInterval controls how often each connected peer is polled for
+	// message IDs. Zero uses the default.
+	RequestInterval time.Duration
+
+	// RequestCount controls how many message IDs are requested per poll. Zero
+	// uses the default.
+	RequestCount uint16
+
+	// DialTimeout controls outbound peer dial timeout. Zero uses the default.
+	DialTimeout time.Duration
+
+	// Reconnect controls outbound peer reconnect backoff. Zero fields use
+	// defaults.
+	Reconnect ReconnectConfig
+
+	Hooks NodeToNodeHooks
+}
+
+type NodeToNodeHooks struct {
+	OnPeerConnected    func(context.Context, string, Peer)
+	OnPeerDisconnected func(context.Context, string, Peer, error)
+	OnError            func(context.Context, string, error)
+}
+
 type Hooks struct {
 	OnMessageAccepted func(context.Context, Message)
 	OnMessageRejected func(context.Context, string, *DmqMessage, RejectReason)
@@ -150,13 +183,21 @@ func defaultTopicConfig(cfg TopicConfig) TopicConfig {
 	if cfg.TTL.MaxTTL < cfg.TTL.DefaultTTL {
 		cfg.TTL.MaxTTL = cfg.TTL.DefaultTTL
 	}
-	if cfg.Reconnect.InitialBackoff <= 0 {
-		cfg.Reconnect.InitialBackoff = time.Second
-	}
-	if cfg.Reconnect.MaxBackoff <= 0 {
-		cfg.Reconnect.MaxBackoff = 2 * time.Minute
-	}
+	cfg.Reconnect = defaultReconnectConfig(cfg.Reconnect)
 	cfg.Discovery = defaultDiscoveryConfig(cfg.Discovery)
+	return cfg
+}
+
+func defaultReconnectConfig(cfg ReconnectConfig) ReconnectConfig {
+	if cfg.InitialBackoff <= 0 {
+		cfg.InitialBackoff = time.Second
+	}
+	if cfg.MaxBackoff <= 0 {
+		cfg.MaxBackoff = 2 * time.Minute
+	}
+	if cfg.MaxBackoff < cfg.InitialBackoff {
+		cfg.MaxBackoff = cfg.InitialBackoff
+	}
 	return cfg
 }
 

@@ -33,9 +33,10 @@ type Manager struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 
-	mu     sync.RWMutex
-	topics map[string]*topicRuntime
-	closed bool
+	mu       sync.RWMutex
+	topics   map[string]*topicRuntime
+	services map[*NodeToNodeService]struct{}
+	closed   bool
 }
 
 func NewManager(cfg ManagerConfig) *Manager {
@@ -49,13 +50,14 @@ func NewManager(cfg ManagerConfig) *Manager {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Manager{
-		logger: logger,
-		clock:  clock,
-		signer: cfg.Signer,
-		auth:   cfg.Authenticator,
-		ctx:    ctx,
-		cancel: cancel,
-		topics: make(map[string]*topicRuntime),
+		logger:   logger,
+		clock:    clock,
+		signer:   cfg.Signer,
+		auth:     cfg.Authenticator,
+		ctx:      ctx,
+		cancel:   cancel,
+		topics:   make(map[string]*topicRuntime),
+		services: make(map[*NodeToNodeService]struct{}),
 	}
 }
 
@@ -135,22 +137,48 @@ func (m *Manager) Shutdown(ctx context.Context) error {
 	for _, rt := range m.topics {
 		topics = append(topics, rt)
 	}
+	services := make([]*NodeToNodeService, 0, len(m.services))
+	for service := range m.services {
+		services = append(services, service)
+	}
 	m.mu.Unlock()
 
-	done := make(chan struct{})
+	done := make(chan error, 1)
 	go func() {
+		var errs []error
+		for _, service := range services {
+			if err := service.Close(); err != nil {
+				errs = append(errs, err)
+			}
+		}
 		for _, rt := range topics {
 			rt.close()
 		}
-		close(done)
+		done <- errors.Join(errs...)
 	}()
 
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
-	case <-done:
-		return nil
+	case err := <-done:
+		return err
 	}
+}
+
+func (m *Manager) registerService(service *NodeToNodeService) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.closed {
+		return ErrManagerClosed
+	}
+	m.services[service] = struct{}{}
+	return nil
+}
+
+func (m *Manager) unregisterService(service *NodeToNodeService) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.services, service)
 }
 
 func (m *Manager) topic(topic string) (*topicRuntime, error) {

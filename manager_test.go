@@ -101,6 +101,112 @@ func TestManagerPublishSubscribeFanout(t *testing.T) {
 	}
 }
 
+func TestNodeToNodeServiceRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	const topic = "governance"
+	signer := testSigner(t)
+	mA := NewManager(ManagerConfig{Signer: signer})
+	mB := NewManager(ManagerConfig{Signer: signer})
+	for name, manager := range map[string]*Manager{"A": mA, "B": mB} {
+		if err := manager.RegisterTopic(topic, TopicConfig{NetworkMagic: 42}); err != nil {
+			t.Fatalf("RegisterTopic %s: %v", name, err)
+		}
+	}
+	subB, err := mB.Subscribe(topic)
+	if err != nil {
+		t.Fatalf("Subscribe B: %v", err)
+	}
+	defer func() { _ = subB.Close() }()
+	peerConnected := make(chan Peer, 1)
+
+	svcB, err := mB.StartNodeToNode(ctx, topic, NodeToNodeConfig{
+		ListenAddress:   "127.0.0.1:0",
+		RequestInterval: 10 * time.Millisecond,
+		Hooks: NodeToNodeHooks{
+			OnPeerConnected: func(_ context.Context, _ string, peer Peer) {
+				select {
+				case peerConnected <- peer:
+				default:
+				}
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("StartNodeToNode B: %v", err)
+	}
+	defer func() { _ = svcB.Close() }()
+	addr := svcB.ListenAddr()
+	if addr == nil {
+		t.Fatal("B listen address is nil")
+	}
+
+	svcA, err := mA.StartNodeToNode(ctx, topic, NodeToNodeConfig{
+		Peers: []Peer{{
+			Address: addr.String(),
+			Source:  PeerSourceStatic,
+		}},
+		RequestInterval: 10 * time.Millisecond,
+		Reconnect: ReconnectConfig{
+			InitialBackoff: 10 * time.Millisecond,
+			MaxBackoff:     20 * time.Millisecond,
+		},
+	})
+	if err != nil {
+		t.Fatalf("StartNodeToNode A: %v", err)
+	}
+	defer func() { _ = svcA.Close() }()
+
+	waitForPeerCount(t, svcA, 1)
+	var serviceAAddr string
+	select {
+	case peer := <-peerConnected:
+		serviceAAddr = peer.Address
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for B peer connection")
+	}
+	published, err := mA.Publish(ctx, topic, []byte("hello ntn"))
+	if err != nil {
+		t.Fatalf("Publish A: %v", err)
+	}
+	publishedID := published.ID()
+
+	select {
+	case got := <-subB.C:
+		if string(got.Body) != "hello ntn" {
+			t.Fatalf("body = %q", got.Body)
+		}
+		if string(got.ID) != string(publishedID) {
+			t.Fatalf("id = %x, want %x", got.ID, publishedID)
+		}
+		if got.Source != MessageSourceRemote {
+			t.Fatalf("source = %q, want %q", got.Source, MessageSourceRemote)
+		}
+		if got.Peer == nil || got.Peer.Address == "" {
+			t.Fatalf("remote peer metadata missing: %+v", got.Peer)
+		}
+		if got.Peer.Address != serviceAAddr {
+			t.Fatalf("peer address = %q, want %q", got.Peer.Address, serviceAAddr)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for node-to-node message")
+	}
+}
+
+func waitForPeerCount(t *testing.T, svc *NodeToNodeService, want int) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	if testDeadline, ok := t.Deadline(); ok {
+		deadline = testDeadline
+	}
+	for time.Now().Before(deadline) {
+		if svc.PeerCount() >= want {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("peer count = %d, want at least %d", svc.PeerCount(), want)
+}
+
 func TestPublishWithPreEpochClock(t *testing.T) {
 	m := NewManager(ManagerConfig{
 		Clock:  testClock{now: time.Unix(-100, 0)},

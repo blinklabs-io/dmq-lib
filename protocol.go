@@ -64,6 +64,10 @@ func (m *Manager) LocalMessageNotificationConfig(topic string) (localmessagenoti
 // MessageSubmissionConfig returns a gOuroboros CIP-0137 message-submission
 // config wired to the topic queue.
 func (m *Manager) MessageSubmissionConfig(topic string) (messagesubmission.Config, error) {
+	return m.messageSubmissionConfig(m.ctx, topic, nil)
+}
+
+func (m *Manager) messageSubmissionConfig(ctx context.Context, topic string, peer *Peer) (messagesubmission.Config, error) {
 	rt, err := m.topic(topic)
 	if err != nil {
 		return messagesubmission.Config{}, err
@@ -77,7 +81,7 @@ func (m *Manager) MessageSubmissionConfig(topic string) (messagesubmission.Confi
 				return
 			}
 			if err := cb.Client.ReplyMessageIds(rt.messageIDs(int(requestCount))); err != nil {
-				rt.callError(context.Background(), err)
+				rt.callError(ctx, err)
 			}
 		}),
 		messagesubmission.WithRequestMessagesFunc(func(cb messagesubmission.CallbackContext, ids [][]byte) {
@@ -85,7 +89,7 @@ func (m *Manager) MessageSubmissionConfig(topic string) (messagesubmission.Confi
 				return
 			}
 			if err := cb.Client.ReplyMessages(rt.messagesByIDs(ids)); err != nil {
-				rt.callError(context.Background(), err)
+				rt.callError(ctx, err)
 			}
 		}),
 		messagesubmission.WithReplyMessageIdsFunc(func(cb messagesubmission.CallbackContext, ids []MessageIDAndSize) {
@@ -97,13 +101,13 @@ func (m *Manager) MessageSubmissionConfig(topic string) (messagesubmission.Confi
 				messageIDs = append(messageIDs, cloneBytes(id.MessageID))
 			}
 			if err := cb.Server.RequestMessages(messageIDs); err != nil {
-				rt.callError(context.Background(), err)
+				rt.callError(ctx, err)
 			}
 		}),
 		messagesubmission.WithReplyMessagesFunc(func(_ messagesubmission.CallbackContext, messages []DmqMessage) {
 			for i := range messages {
-				if err := rt.submitSigned(context.Background(), &messages[i], MessageSourceRemote, nil); err != nil {
-					rt.callError(context.Background(), err)
+				if err := rt.submitSigned(ctx, &messages[i], MessageSourceRemote, peer); err != nil {
+					rt.callError(ctx, err)
 				}
 			}
 		}),

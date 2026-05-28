@@ -4,12 +4,6 @@ Embeddable Go library for CIP-0137 Distributed Message Queue (DMQ).
 
 This package uses `github.com/blinklabs-io/gouroboros@v0.171.0` as the DMQ wire/message source of truth, with Dingo topology/peer-governance types and Bursa key parsing where useful.
 
-## Status
-
-This is the first embeddable library cut. It provides direct Go APIs for topic registration, publish/subscribe, signed message submission, duplicate suppression, TTL validation, topology peers, ledger-peer snapshot adapters, and file-backed SPO signing.
-
-Local CIP-0137 socket listeners are intentionally not part of this API. Callers that need gOuroboros protocol wiring can use the config adapter methods on `Manager`.
-
 ## Basic Use
 
 ```go
@@ -87,6 +81,29 @@ if err != nil {
 Ledger peer discovery is opt-in through `LedgerPeerDiscoveryConfig.Provider`. `BuildLedgerPeerPools` normalizes SRV, hostname, and IP relay records and creates all-ledger plus big-ledger pools. gOuroboros LocalStateQuery clients can be adapted with `LocalStateQueryLedgerPeerSnapshotProvider`; Dingo `peergov.LedgerPeerProvider` can be adapted with `DingoLedgerPeerProviderAdapter` only as an explicit relay-only source unless a staked provider is supplied.
 
 ## gOuroboros Adapters
+
+For embedded node-to-node DMQ, start a service on a registered topic:
+
+```go
+err := m.RegisterTopic("governance", dmq.TopicConfig{
+    NetworkMagic: 764824073,
+})
+if err != nil {
+    return err
+}
+
+svc, err := m.StartNodeToNode(ctx, "governance", dmq.NodeToNodeConfig{
+    ListenAddress: "127.0.0.1:3001",
+    Peers: []dmq.Peer{{Address: "relay.example:3001"}},
+})
+if err != nil {
+    return err
+}
+defer svc.Close()
+```
+
+The service dials configured topic peers, accepts inbound peers when a listen address is set, and exchanges messages through the topic queue.
+`StartNodeToNode` requires the topic registered with `RegisterTopic` to set `TopicConfig.NetworkMagic`; otherwise it returns `ErrNetworkMagicRequired`.
 
 `Manager` can produce gOuroboros protocol configs for an existing topic:
 

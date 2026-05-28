@@ -27,6 +27,7 @@ var (
 	ErrMessageExpired                  = errors.New("dmq message expired")
 	ErrMessageTTLTooFar                = errors.New("dmq message expiration too far in future")
 	ErrMessageIDMismatch               = errors.New("dmq message ID mismatch")
+	ErrNetworkMagicRequired            = errors.New("dmq network magic is required")
 	ErrLedgerPeerSnapshotUnsupported   = errors.New("ledger peer snapshot query unsupported")
 	ErrLedgerPeerSnapshotProviderUnset = errors.New("ledger peer snapshot provider is not configured")
 )
