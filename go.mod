@@ -6,7 +6,7 @@ toolchain go1.26.3
 
 require (
 	github.com/blinklabs-io/bursa v0.16.0
-	github.com/blinklabs-io/dingo v0.47.1
+	github.com/blinklabs-io/dingo v0.49.1
 	github.com/blinklabs-io/gouroboros v0.179.0
 )
 
