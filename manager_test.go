@@ -286,6 +286,25 @@ func TestQueueBounds(t *testing.T) {
 	}
 }
 
+func TestPublishRejectsOversizedBody(t *testing.T) {
+	m := NewManager(ManagerConfig{Clock: testClock{now: time.Now()}, Signer: testSigner(t)})
+	if err := m.RegisterTopic("topic", TopicConfig{}); err != nil {
+		t.Fatal(err)
+	}
+	body := make([]byte, MaxMessageBodyBytes+1)
+	if _, err := m.Publish(context.Background(), "topic", body); !errors.Is(err, ErrMessageBodyTooLarge) {
+		t.Fatalf("Publish oversized body error = %v, want %v", err, ErrMessageBodyTooLarge)
+	}
+}
+
+func TestExpiresAtRejectsOutOfRange(t *testing.T) {
+	now := time.Unix(MaxMessageExpiresAtUnix, 0)
+	_, err := ExpiresAt(now, time.Second)
+	if !errors.Is(err, ErrMessageExpiryOutOfRange) {
+		t.Fatalf("ExpiresAt error = %v, want %v", err, ErrMessageExpiryOutOfRange)
+	}
+}
+
 func TestCanceledContextDuringFanoutDoesNotFailAcceptedPublish(t *testing.T) {
 	m := NewManager(ManagerConfig{Clock: testClock{now: time.Now()}, Signer: testSigner(t)})
 	if err := m.RegisterTopic("topic", TopicConfig{
@@ -385,6 +404,35 @@ func TestTopologyParsing(t *testing.T) {
 	}
 	if peers[0].Source != PeerSourceTopologyLocalRoot || peers[0].Valency != 1 || !peers[0].Trustable {
 		t.Fatalf("unexpected local root: %+v", peers[0])
+	}
+}
+
+func TestNewDiscoveryConfigLoadsTopologyFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "topology.json")
+	if err := os.WriteFile(
+		path,
+		[]byte(`{
+			"localRoots": [{"accessPoints":[{"address":"relay.local","port":3001}],"advertise":true,"trustable":true,"valency":1}],
+			"publicRoots": [],
+			"bootstrapPeers": []
+		}`),
+		0o600,
+	); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	cfg, err := NewDiscoveryConfig(path, []Peer{{Address: "static.local:3002"}})
+	if err != nil {
+		t.Fatalf("NewDiscoveryConfig: %v", err)
+	}
+	peers := TopologyPeers(cfg.Topology)
+	if len(peers) != 1 || peers[0].Address != "relay.local:3001" {
+		t.Fatalf("topology peers = %+v", peers)
+	}
+	if len(cfg.StaticPeers) != 1 || cfg.StaticPeers[0].Address != "static.local:3002" {
+		t.Fatalf("static peers = %+v", cfg.StaticPeers)
+	}
+	if cfg.StaticPeers[0].Source != PeerSourceStatic {
+		t.Fatalf("static peer source = %q", cfg.StaticPeers[0].Source)
 	}
 }
 

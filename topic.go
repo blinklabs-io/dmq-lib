@@ -75,9 +75,9 @@ func (t *topicRuntime) publish(ctx context.Context, body []byte) (*DmqMessage, e
 	if t.cfg.Signer == nil {
 		return nil, ErrSignerRequired
 	}
-	payload := DmqMessagePayload{
-		MessageBody: cloneBytes(body),
-		ExpiresAt:   expiresAt(t.clock.Now(), t.cfg.TTL.DefaultTTL),
+	payload, err := NewMessagePayload(t.clock.Now(), t.cfg.TTL.DefaultTTL, body)
+	if err != nil {
+		return nil, err
 	}
 	msg, err := t.cfg.Signer.Sign(ctx, t.name, payload)
 	if err != nil {
@@ -302,6 +302,9 @@ func (s *Subscription) Close() error {
 }
 
 func normalizeAndValidateMessage(msg *DmqMessage) error {
+	if err := ValidateMessageBody(msg.Payload.MessageBody); err != nil {
+		return err
+	}
 	id := msg.ID()
 	computed, err := pcommon.ComputeDmqMessageID(msg.Payload)
 	if err != nil {
@@ -355,23 +358,6 @@ func wrapTTLValidationError(err error) error {
 	default:
 		return err
 	}
-}
-
-func expiresAt(now time.Time, ttl time.Duration) uint32 {
-	if ttl <= 0 {
-		ttl = 30 * time.Minute
-	}
-	nowUnix := now.Unix()
-	var unix uint64
-	if nowUnix > 0 {
-		unix = uint64(nowUnix)
-	}
-	add := uint64(ttl.Seconds())
-	maxUint32 := uint64(^uint32(0))
-	if unix > maxUint32 || add > maxUint32-unix {
-		return ^uint32(0)
-	}
-	return uint32(unix + add) // #nosec G115 -- bounded above.
 }
 
 func cloneMessage(msg DmqMessage) DmqMessage {

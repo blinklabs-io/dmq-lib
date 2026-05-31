@@ -53,25 +53,41 @@ Callers that already have a CIP-0137 signed message can bypass signing:
 err := m.SubmitSigned(ctx, "governance", signedMessage)
 ```
 
-For file-backed SPO signing, use `NewFileSigner` with cardano-cli-compatible KES signing key and operational certificate files.
+For file-backed SPO signing, derive network timing with dmq-lib and wrap a
+KES provider as a DMQ signer:
+
+```go
+params, err := dmq.NetworkParamsFromShelleyGenesis("shelley-genesis.json")
+if err != nil {
+    return err
+}
+
+provider, err := dmq.NewKESSigner("kes.skey", "opcert.cert", params)
+if err != nil {
+    return err
+}
+
+signer := dmq.NewKESSigningProviderSigner(provider)
+```
+
+`Publish` applies `MaxMessageBodyBytes`, `DefaultMessageTTL`, and the topic's
+configured TTL policy before signing.
 
 ## Discovery
 
-Static peers and Dingo topology files are supported directly:
+Static peers and Dingo/Cardano-style topology files are supported directly
+without callers importing Dingo topology types:
 
 ```go
-topology, err := dmq.ParseTopologyFile("topology.json")
+discovery, err := dmq.NewDiscoveryConfig("topology.json", []dmq.Peer{
+    {Address: "relay.example:3001", Source: dmq.PeerSourceStatic},
+})
 if err != nil {
     return err
 }
 
 err = m.RegisterTopic("governance", dmq.TopicConfig{
-    Discovery: dmq.DiscoveryConfig{
-        Topology: topology,
-        StaticPeers: []dmq.Peer{
-            {Host: "relay.example", Port: 3001, Source: dmq.PeerSourceStatic},
-        },
-    },
+    Discovery: discovery,
 })
 if err != nil {
     return err
