@@ -175,10 +175,10 @@ func defaultTopicConfig(cfg TopicConfig) TopicConfig {
 		cfg.Queue.DuplicateTTL = 10 * time.Minute
 	}
 	if cfg.TTL.DefaultTTL <= 0 {
-		cfg.TTL.DefaultTTL = 30 * time.Minute
+		cfg.TTL.DefaultTTL = DefaultMessageTTL
 	}
 	if cfg.TTL.MaxTTL <= 0 {
-		cfg.TTL.MaxTTL = 30 * time.Minute
+		cfg.TTL.MaxTTL = MaxMessageTTL
 	}
 	if cfg.TTL.MaxTTL < cfg.TTL.DefaultTTL {
 		cfg.TTL.MaxTTL = cfg.TTL.DefaultTTL

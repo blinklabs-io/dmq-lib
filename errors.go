@@ -29,6 +29,8 @@ var (
 	ErrMessageBodyTooLarge             = errors.New("dmq message body too large")
 	ErrMessageExpiryOutOfRange         = errors.New("dmq message expiration out of range")
 	ErrMessageIDMismatch               = errors.New("dmq message ID mismatch")
+	ErrMessageBodyTooLarge             = errors.New("dmq message body too large")
+	ErrMessageExpiryOutOfRange         = errors.New("dmq message expiration out of range")
 	ErrNetworkMagicRequired            = errors.New("dmq network magic is required")
 	ErrLedgerPeerSnapshotUnsupported   = errors.New("ledger peer snapshot query unsupported")
 	ErrLedgerPeerSnapshotProviderUnset = errors.New("ledger peer snapshot provider is not configured")
