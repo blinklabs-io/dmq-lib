@@ -150,6 +150,26 @@ func ReadTopology(r io.Reader) (*dtopology.TopologyConfig, error) {
 	return dtopology.NewTopologyConfigFromReader(r)
 }
 
+// NewDiscoveryConfig loads optional topology-file peers and combines them
+// with explicit static peers without exposing topology parser types to callers.
+func NewDiscoveryConfig(topologyFile string, staticPeers []Peer) (DiscoveryConfig, error) {
+	cfg := DiscoveryConfig{StaticPeers: clonePeers(staticPeers)}
+	for i := range cfg.StaticPeers {
+		if cfg.StaticPeers[i].Source == "" {
+			cfg.StaticPeers[i].Source = PeerSourceStatic
+		}
+	}
+	if topologyFile == "" {
+		return cfg, nil
+	}
+	topology, err := ParseTopologyFile(topologyFile)
+	if err != nil {
+		return DiscoveryConfig{}, err
+	}
+	cfg.Topology = topology
+	return cfg, nil
+}
+
 func TopologyPeers(cfg *dtopology.TopologyConfig) []Peer {
 	if cfg == nil {
 		return nil
@@ -563,6 +583,15 @@ func clonePeerPtr(peer *Peer) *Peer {
 	}
 	cp := *peer
 	return &cp
+}
+
+func clonePeers(peers []Peer) []Peer {
+	if peers == nil {
+		return nil
+	}
+	ret := make([]Peer, len(peers))
+	copy(ret, peers)
+	return ret
 }
 
 func cloneLedgerPeers(peers []LedgerPeer) []LedgerPeer {
