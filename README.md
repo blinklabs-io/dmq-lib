@@ -2,10 +2,23 @@
 
 Embeddable Go library for CIP-0137 Distributed Message Queue (DMQ).
 
-`dmq-lib` uses `github.com/blinklabs-io/gouroboros@v0.179.0` as the
-DMQ wire/protocol source of truth. It also wraps Dingo topology and
-peer-governance types, plus Bursa/Cardano key parsing helpers where they are
-useful to callers.
+`dmq-lib` is a library, not a daemon. It gives Go applications topic-scoped
+DMQ queues, local subscriptions, signed message publishing, peer discovery, and
+gOuroboros protocol adapters that can be embedded into a Cardano-aware process.
+
+The DMQ wire types come from
+`github.com/blinklabs-io/gouroboros/protocol/common`, which keeps this package
+aligned with the gOuroboros implementation of CIP-0137. The package also wraps
+Dingo topology and peer-governance types, plus Bursa/Cardano key parsing helpers
+where those are useful to callers.
+
+## Requirements
+
+- Go 1.26 or newer.
+- A caller-provided `Signer` for local publishing.
+- `TopicConfig.NetworkMagic` when node-to-node networking is enabled.
+- KES signing key and operational certificate material when using the built-in
+  SPO KES signing helpers.
 
 ## Install
 
@@ -15,11 +28,12 @@ go get github.com/blinklabs-io/dmq-lib
 
 ## What It Provides
 
-- Topic-scoped DMQ queues with duplicate suppression, TTL validation, fanout
-  subscriptions, and hooks.
-- `TopicNode`, a single-topic convenience wrapper that can register a topic,
-  load discovery peers, and start node-to-node networking.
-- `Manager`, the lower-level multi-topic API.
+- Topic-scoped queues with duplicate suppression, TTL validation, bounded body
+  size validation, fanout subscriptions, and lifecycle hooks.
+- `TopicNode`, a single-topic convenience wrapper for applications that want one
+  object for publishing, subscribing, discovery, networking, and shutdown.
+- `Manager`, the lower-level multi-topic API for processes that need explicit
+  control over topic registration and node-to-node services.
 - Publishing through caller-provided signers, plus direct submission of already
   signed CIP-0137 messages.
 - File-backed, in-process, and external-process KES signing helpers.
@@ -27,10 +41,20 @@ go get github.com/blinklabs-io/dmq-lib
 - gOuroboros local-message-submission, local-message-notification, and
   message-submission adapters.
 
+## Choosing an API
+
+| Use case | Entry point |
+| --- | --- |
+| One process owns one DMQ topic | `TopicNode` |
+| One process owns multiple topics | `Manager` |
+| Caller already has a signed CIP-0137 message | `SubmitSigned` |
+| Caller needs embedded node-to-node DMQ | `StartNodeToNode` or `TopicNode` with networking config |
+| Caller needs gOuroboros configs only | `LocalMessageSubmissionConfig`, `LocalMessageNotificationConfig`, `MessageSubmissionConfig` |
+
 ## TopicNode Quick Start
 
-Use `TopicNode` when the application owns one DMQ topic and wants one object
-for publishing, subscribing, discovery, networking, and shutdown.
+Use `TopicNode` when the application owns one DMQ topic and wants the library to
+register the topic and manage shutdown as one unit.
 
 ```go
 ctx := context.Background()
@@ -63,8 +87,8 @@ for received := range sub.C {
 }
 ```
 
-`TopicNode` starts node-to-node networking automatically when network discovery
-or `NodeToNode` settings are present. Networked topics must set
+`TopicNode` starts node-to-node networking automatically when discovery peers or
+`NodeToNode` settings are present. Networked topics must set
 `TopicConfig.NetworkMagic`.
 
 ```go
@@ -92,8 +116,8 @@ defer func() { _ = node.Close() }()
 
 ## Manager API
 
-Use `Manager` directly when one process needs to manage multiple topics or
-when the application wants explicit control over topic registration and
+Use `Manager` directly when one process manages multiple topics or when the
+application wants explicit control over topic registration, queue policy, and
 node-to-node services.
 
 ```go
@@ -123,13 +147,19 @@ if err != nil {
 _ = msg
 ```
 
-`Publish` builds a DMQ payload, applies `MaxMessageBodyBytes`,
-`DefaultMessageTTL`, and the topic's TTL policy, then signs the payload with
-the topic signer or manager signer. `SubmitSigned` accepts a complete CIP-0137
-message and routes it through the same queue, duplicate, TTL, hook, and optional
-authentication path.
+`Publish` builds a DMQ payload, applies body-size and TTL policy, signs the
+payload with the topic signer or manager signer, then submits the signed message
+through the same validation and queue path used by remote messages.
 
-## Signed Messages
+`SubmitSigned` accepts a complete CIP-0137 message and routes it through queue,
+duplicate, TTL, hook, and optional authentication checks without signing it
+again.
+
+```go
+err := m.SubmitSigned(ctx, "governance", signedMessage)
+```
+
+## Signing
 
 Applications can inject their own signer:
 
@@ -137,12 +167,6 @@ Applications can inject their own signer:
 type Signer interface {
     Sign(ctx context.Context, topic string, payload dmq.DmqMessagePayload) (*dmq.DmqMessage, error)
 }
-```
-
-Callers that already have a CIP-0137 signed message can bypass signing:
-
-```go
-err := m.SubmitSigned(ctx, "governance", signedMessage)
 ```
 
 For SPO KES signing, derive network timing and wrap a KES provider as a DMQ
@@ -162,7 +186,7 @@ if err != nil {
 signer := dmq.NewKESSigningProviderSigner(provider)
 ```
 
-`NewExternalKESSigner` can be used when KES custody lives in a separate helper
+`NewExternalKESSigner` is available when KES custody lives in a separate helper
 process. `NewOperationalCredentialStatus` reports the current KES period,
 remaining evolutions, and expiration time for operational credentials.
 
@@ -192,12 +216,12 @@ Ledger peer discovery is opt-in through
 hostname, IPv4, and IPv6 relay records and creates all-ledger plus big-ledger
 pools. gOuroboros LocalStateQuery clients can be adapted with
 `LocalStateQueryLedgerPeerSnapshotProvider`; Dingo `peergov.LedgerPeerProvider`
-can be adapted with `DingoLedgerPeerProviderAdapter` as an explicit relay-only
-source unless a staked provider is supplied.
+can be adapted with `DingoLedgerPeerProviderAdapter`.
 
-## gOuroboros Adapters
+## Node-to-Node DMQ
 
-For embedded node-to-node DMQ, start a service on a registered topic:
+For embedded node-to-node DMQ, register a topic with a network magic and start a
+service:
 
 ```go
 err := m.RegisterTopic("governance", dmq.TopicConfig{
@@ -219,19 +243,26 @@ if err != nil {
 defer func() { _ = svc.Close() }()
 ```
 
-The service dials configured topic peers, accepts inbound peers when a listen
-address is set, and exchanges messages through the topic queue. `StartNodeToNode`
-requires the topic to be registered with `TopicConfig.NetworkMagic`; otherwise
-it returns `ErrNetworkMagicRequired`.
+The service dials configured peers, accepts inbound peers when `ListenAddress`
+is set, and exchanges message IDs and messages through the gOuroboros
+message-submission protocol.
 
-`Manager` can also produce gOuroboros protocol configs for an existing topic:
+## Development
 
-```go
-localSubmitCfg, err := m.LocalMessageSubmissionConfig("governance")
-localNotifyCfg, err := m.LocalMessageNotificationConfig("governance")
-messageSubmitCfg, err := m.MessageSubmissionConfig("governance")
+Useful commands:
+
+```sh
+go test ./...
+make test
+make format
+go mod tidy
 ```
 
-The adapters disable gOuroboros' internal TTL/auth prevalidation and route
-validation through the manager so topic policy, hooks, duplicate suppression,
-and the manager clock stay authoritative.
+`make test` runs `go test -v -race ./...` after `go mod tidy`.
+
+For implementation details, ownership rules, and change guidance, see
+[ARCHITECTURE.md](ARCHITECTURE.md).
+
+## License
+
+Apache-2.0. See [LICENSE](LICENSE).
