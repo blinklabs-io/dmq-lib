@@ -48,7 +48,7 @@ go get github.com/blinklabs-io/dmq-lib
 | One process owns one DMQ topic | `TopicNode` |
 | One process owns multiple topics | `Manager` |
 | Caller already has a signed CIP-0137 message | `SubmitSigned` |
-| Caller needs embedded node-to-node DMQ | `StartNodeToNode` or `TopicNode` with networking config |
+| Caller needs to embed node-to-node DMQ | `StartNodeToNode` or `TopicNode` with networking config |
 | Caller needs gOuroboros configs only | `LocalMessageSubmissionConfig`, `LocalMessageNotificationConfig`, `MessageSubmissionConfig` |
 
 ## TopicNode Quick Start
