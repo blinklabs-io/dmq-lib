@@ -24,8 +24,8 @@
 //
 // dmq aliases the gOuroboros DMQ wire types so callers can publish local
 // message bodies through a Signer or submit already signed CIP-0137 messages
-// directly. It includes Cardano network timing helpers, file-backed and
-// external-process KES signing helpers, topology and ledger peer discovery, and
-// gOuroboros protocol adapters for local message submission, local message
-// notification, and node-to-node message submission.
+// directly. It includes Cardano network timing helpers, file-backed,
+// reloadable, and external-process KES signing helpers, topology and ledger peer
+// discovery, and gOuroboros protocol adapters for local message submission,
+// local message notification, and node-to-node message submission.
 package dmq

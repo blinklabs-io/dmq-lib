@@ -664,17 +664,21 @@ func BuildSignedMessage(ctx context.Context, provider KESSigningProvider, topic 
 func (s KESSigningProviderSigner) Sign(ctx context.Context, topic string, payload DmqMessagePayload) (*DmqMessage, error) {
 	_ = ctx
 	_ = topic
-	if s.Provider == nil {
+	provider := s.Provider
+	if snapshotter, ok := provider.(interface{ ActiveProvider() KESSigningProvider }); ok {
+		provider = snapshotter.ActiveProvider()
+	}
+	if provider == nil || isNilInterface(provider) {
 		return nil, ErrSignerRequired
 	}
 	if payload.ExpiresAt == 0 {
 		return nil, errors.New("dmq payload expiration is required")
 	}
-	relPeriod, err := s.Provider.CurrentPeriod()
+	relPeriod, err := provider.CurrentPeriod()
 	if err != nil {
 		return nil, err
 	}
-	cert := s.Provider.OperationalCertificate()
+	cert := provider.OperationalCertificate()
 	if relPeriod > math.MaxUint64-cert.KESPeriod {
 		return nil, fmt.Errorf("KES period overflow: op cert period %d plus relative period %d", cert.KESPeriod, relPeriod)
 	}
@@ -685,7 +689,7 @@ func (s KESSigningProviderSigner) Sign(ctx context.Context, topic string, payloa
 	if err != nil {
 		return nil, err
 	}
-	signed, err := s.Provider.SignAt(relPeriod, signingBytes)
+	signed, err := provider.SignAt(relPeriod, signingBytes)
 	if err != nil {
 		return nil, fmt.Errorf("KES sign: %w", err)
 	}

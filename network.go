@@ -215,8 +215,22 @@ func (s *NodeToNodeService) acceptLoop(listener net.Listener) {
 			s.cancel()
 			return
 		}
+		if conn == nil {
+			err := errors.New("accept DMQ node-to-node peer: accepted nil connection")
+			s.setListenError(err)
+			s.callError(err)
+			_ = listener.Close()
+			s.cancel()
+			return
+		}
+		remoteAddr := conn.RemoteAddr()
+		if remoteAddr == nil {
+			s.callError(errors.New("accept DMQ node-to-node peer: accepted connection with nil remote address"))
+			_ = conn.Close()
+			continue
+		}
 		peer := Peer{
-			Address: conn.RemoteAddr().String(),
+			Address: remoteAddr.String(),
 			Source:  PeerSourcePeerSharing,
 		}
 		s.wg.Add(1)
