@@ -968,11 +968,35 @@ func (m *mockDingoLedgerPeerProvider) CurrentSlot() uint64 {
 
 func writeSignerFixtures(t *testing.T, dir string, opcertKESPeriod uint64) (string, string) {
 	t.Helper()
-	seed := bytesOf(32, 0x42)
+	return writeSignerFixturesWithSeed(t, dir, opcertKESPeriod, 0x42)
+}
+
+func writeSignerFixturesWithSeed(t *testing.T, dir string, opcertKESPeriod uint64, seedByte byte) (string, string) {
+	t.Helper()
+	kesPath := filepath.Join(dir, "kes.skey")
+	opcertPath := filepath.Join(dir, "opcert.cert")
+	vkey := writeKESKeyFixture(t, kesPath, seedByte)
+	writeOperationalCertificateFixture(t, opcertPath, vkey, opcertKESPeriod)
+	return kesPath, opcertPath
+}
+
+func writeKESKeyFixture(t *testing.T, path string, seedByte byte) []byte {
+	t.Helper()
+	seed := bytesOf(32, seedByte)
 	sk, vkey, err := kes.KeyGen(kes.CardanoKesDepth, seed)
 	if err != nil {
 		t.Fatal(err)
 	}
+	kesCBOR, err := cbor.Encode(sk.Data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeKeyFile(t, path, "KesSigningKey_ed25519_kes_2^6", kesCBOR)
+	return cloneBytes(vkey)
+}
+
+func writeOperationalCertificateFixture(t *testing.T, path string, vkey []byte, opcertKESPeriod uint64) {
+	t.Helper()
 	coldPub, coldPriv, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		t.Fatal(err)
@@ -982,11 +1006,6 @@ func writeSignerFixtures(t *testing.T, dir string, opcertKESPeriod uint64) (stri
 	binary.BigEndian.PutUint64(body[32:40], 1)
 	binary.BigEndian.PutUint64(body[40:48], opcertKESPeriod)
 	sig := ed25519.Sign(coldPriv, body[:])
-
-	kesCBOR, err := cbor.Encode(sk.Data)
-	if err != nil {
-		t.Fatal(err)
-	}
 	opcertCBOR, err := cbor.Encode([]any{
 		[]any{vkey, uint64(1), opcertKESPeriod, sig},
 		[]byte(coldPub),
@@ -994,11 +1013,7 @@ func writeSignerFixtures(t *testing.T, dir string, opcertKESPeriod uint64) (stri
 	if err != nil {
 		t.Fatal(err)
 	}
-	kesPath := filepath.Join(dir, "kes.skey")
-	opcertPath := filepath.Join(dir, "opcert.cert")
-	writeKeyFile(t, kesPath, "KesSigningKey_ed25519_kes_2^6", kesCBOR)
-	writeKeyFile(t, opcertPath, "NodeOperationalCertificate", opcertCBOR)
-	return kesPath, opcertPath
+	writeKeyFile(t, path, "NodeOperationalCertificate", opcertCBOR)
 }
 
 func writeKeyFile(t *testing.T, path, typ string, cborData []byte) {

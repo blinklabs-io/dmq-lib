@@ -173,6 +173,12 @@ using network timing to derive the current relative KES period.
 `Signer` interface. `ExternalKESSigner` delegates the actual signature to an
 absolute helper executable without invoking a shell.
 
+`ReloadingSigner` and `ReloadingKESSigningProvider` let embedding applications
+swap active signing material without restarting. A reload constructs and
+validates a complete replacement signer before publishing it; failed reloads
+leave the previous signer active. Process signals and file-watch loops stay with
+the embedding application rather than this library.
+
 Operational certificate helpers validate KES verification keys, cold keys, cold
 signatures, and KES period bounds. `FileSigner.Verify` only checks a
 self-contained KES signature over a payload; it is not an identity or SPO

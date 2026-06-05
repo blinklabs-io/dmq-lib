@@ -186,6 +186,28 @@ if err != nil {
 signer := dmq.NewKESSigningProviderSigner(provider)
 ```
 
+For zero-restart KES rotation, use a reloadable provider and call `Reload`
+from the embedding process's SIGHUP handler or file watcher:
+
+```go
+provider, err := dmq.NewReloadingKESSigner("kes.skey", "opcert.cert", params)
+if err != nil {
+    return err
+}
+
+signer := dmq.NewKESSigningProviderSigner(provider)
+
+// On SIGHUP or a key-file change:
+if err := provider.Reload(); err != nil {
+    return err
+}
+```
+
+`Reload` builds and validates a fresh signer before swapping it in, so failed
+reloads leave the previous signer active. `NewReloadingFileSigner` covers the
+direct `FileSigner` path, and `NewReloadingExternalKESSigner` reloads cached
+operational-certificate material for external signer setups.
+
 `NewExternalKESSigner` is available when KES custody lives in a separate helper
 process. `NewOperationalCredentialStatus` reports the current KES period,
 remaining evolutions, and expiration time for operational credentials.
