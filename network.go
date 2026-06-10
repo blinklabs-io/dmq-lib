@@ -50,6 +50,17 @@ func (m *Manager) StartNodeToNode(ctx context.Context, topic string, cfg NodeToN
 	if rt.cfg.NetworkMagic == 0 {
 		return nil, ErrNetworkMagicRequired
 	}
+	if !rt.cfg.Authentication.Required {
+		rt.logger.Warn(
+			"starting DMQ node-to-node networking without message authentication; " +
+				"messages from remote peers are accepted and relayed after only " +
+				"deterministic message-id and TTL checks, with NO KES signature, " +
+				"operational certificate, or SPO registration verification. Set " +
+				"TopicConfig.Authentication.Required and configure an authenticator " +
+				"(KES verifier and active SPO pool set) before exposing this node to " +
+				"untrusted peers",
+		)
+	}
 	s := newNodeToNodeService(m, rt, ctx, cfg)
 	if err := m.registerService(s); err != nil {
 		return nil, err
