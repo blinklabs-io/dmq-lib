@@ -15,17 +15,20 @@
 package dmq
 
 import (
+	"bytes"
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/binary"
 	"encoding/hex"
 	"errors"
+	"log/slog"
 	"math/big"
 	"net"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -1061,4 +1064,65 @@ func (m *mockStakedLedgerPeerProvider) GetLedgerPeers() ([]LedgerPeer, error) {
 
 func (m *mockStakedLedgerPeerProvider) CurrentSlot() uint64 {
 	return m.slot
+}
+
+// syncBuffer is a concurrency-safe log sink for tests that start background
+// goroutines which may also log.
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (s *syncBuffer) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.buf.Write(p)
+}
+
+func (s *syncBuffer) String() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.buf.String()
+}
+
+const unauthenticatedNtNWarning = "without message authentication"
+
+func TestStartNodeToNodeWarnsWhenAuthenticationNotRequired(t *testing.T) {
+	ctx := context.Background()
+	buf := &syncBuffer{}
+	logger := slog.New(slog.NewTextHandler(buf, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	m := NewManager(ManagerConfig{Logger: logger, Signer: testSigner(t)})
+	if err := m.RegisterTopic("topic", TopicConfig{NetworkMagic: 42}); err != nil {
+		t.Fatalf("RegisterTopic: %v", err)
+	}
+	svc, err := m.StartNodeToNode(ctx, "topic", NodeToNodeConfig{ListenAddress: "127.0.0.1:0"})
+	if err != nil {
+		t.Fatalf("StartNodeToNode: %v", err)
+	}
+	defer func() { _ = svc.Close() }()
+	if got := buf.String(); !strings.Contains(got, unauthenticatedNtNWarning) {
+		t.Fatalf("expected unauthenticated node-to-node warning, got: %q", got)
+	}
+}
+
+func TestStartNodeToNodeNoWarnWhenAuthenticationRequired(t *testing.T) {
+	ctx := context.Background()
+	buf := &syncBuffer{}
+	logger := slog.New(slog.NewTextHandler(buf, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	m := NewManager(ManagerConfig{Logger: logger, Signer: testSigner(t)})
+	cfg := TopicConfig{
+		NetworkMagic:   42,
+		Authentication: AuthenticationConfig{Required: true},
+	}
+	if err := m.RegisterTopic("topic", cfg); err != nil {
+		t.Fatalf("RegisterTopic: %v", err)
+	}
+	svc, err := m.StartNodeToNode(ctx, "topic", NodeToNodeConfig{ListenAddress: "127.0.0.1:0"})
+	if err != nil {
+		t.Fatalf("StartNodeToNode: %v", err)
+	}
+	defer func() { _ = svc.Close() }()
+	if got := buf.String(); strings.Contains(got, unauthenticatedNtNWarning) {
+		t.Fatalf("did not expect unauthenticated node-to-node warning, got: %q", got)
+	}
 }
