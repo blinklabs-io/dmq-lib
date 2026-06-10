@@ -29,17 +29,29 @@ import (
 	pcommon "github.com/blinklabs-io/gouroboros/protocol/common"
 )
 
+// FileSignerConfig configures a FileSigner.
 type FileSignerConfig struct {
-	KESSigningKeyPath          string
+	// KESSigningKeyPath is the path to the KES signing key file in
+	// cardano-cli text-envelope format.
+	KESSigningKeyPath string
+
+	// OperationalCertificatePath is the path to the node operational
+	// certificate file in cardano-cli text-envelope format.
 	OperationalCertificatePath string
 
 	// KESPeriod is used when KESPeriodFunc is nil and Publish did not set a
 	// period on the payload. It is the absolute chain KES period.
 	KESPeriod uint64
 
+	// KESPeriodFunc, when set, supplies the absolute chain KES period at
+	// signing time, typically derived from CurrentKESPeriodFor.
 	KESPeriodFunc func(context.Context) (uint64, error)
 }
 
+// FileSigner is a Signer that signs DMQ message payloads with a KES key and
+// operational certificate loaded from cardano-cli text-envelope files. It
+// evolves its in-memory KES key forward as periods advance and is safe for
+// concurrent use.
 type FileSigner struct {
 	mu sync.Mutex
 
@@ -52,6 +64,9 @@ type FileSigner struct {
 	kesPeriodFunc    func(context.Context) (uint64, error)
 }
 
+// NewFileSigner loads and cross-checks the KES signing key and operational
+// certificate, validates the certificate's cold-key signature, and returns a
+// ready-to-use signer.
 func NewFileSigner(cfg FileSignerConfig) (*FileSigner, error) {
 	if cfg.KESSigningKeyPath == "" {
 		return nil, errors.New("KES signing key path is required")
@@ -108,6 +123,10 @@ func NewFileSigner(cfg FileSignerConfig) (*FileSigner, error) {
 	return s, nil
 }
 
+// Sign implements Signer. It resolves the KES period (payload value first,
+// then KESPeriodFunc, then the configured default), evolves the KES key to
+// that period, signs the payload, and attaches the operational certificate
+// and computed message ID. The payload must carry a non-zero ExpiresAt.
 func (s *FileSigner) Sign(ctx context.Context, topic string, payload DmqMessagePayload) (*DmqMessage, error) {
 	_ = topic
 	period, err := s.currentKESPeriod(ctx, payload)
@@ -151,6 +170,8 @@ func (s *FileSigner) Sign(ctx context.Context, topic string, payload DmqMessageP
 	return msg, nil
 }
 
+// ValidateOperationalCertificate checks the loaded operational certificate's
+// key sizes and verifies its cold-key signature.
 func (s *FileSigner) ValidateOperationalCertificate() error {
 	if len(s.opCert.KESVerificationKey) != ed25519.PublicKeySize {
 		return errors.New("opcert KES verification key must be 32 bytes")
@@ -171,18 +192,22 @@ func (s *FileSigner) ValidateOperationalCertificate() error {
 	return nil
 }
 
+// KESVerificationKey returns a copy of the signer's KES verification key.
 func (s *FileSigner) KESVerificationKey() []byte {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return cloneBytes(s.kesVKey)
 }
 
+// OperationalCertificate returns a copy of the signer's operational
+// certificate.
 func (s *FileSigner) OperationalCertificate() OperationalCertificate {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return cloneOperationalCertificate(s.opCert)
 }
 
+// ColdVerificationKey returns a copy of the signer's cold verification key.
 func (s *FileSigner) ColdVerificationKey() []byte {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -267,6 +292,8 @@ func PayloadSigningBytes(payload DmqMessagePayload) ([]byte, error) {
 	return wrapped, nil
 }
 
+// ComputeMessageID returns the deterministic CIP-0137 message ID for a DMQ
+// message payload.
 func ComputeMessageID(payload DmqMessagePayload) ([]byte, error) {
 	return pcommon.ComputeDmqMessageID(payload)
 }

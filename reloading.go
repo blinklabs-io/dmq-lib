@@ -52,6 +52,7 @@ func NewReloadingFileSigner(cfg FileSignerConfig) (*ReloadingSigner, error) {
 	})
 }
 
+// Sign implements Signer by delegating to the currently active signer.
 func (s *ReloadingSigner) Sign(ctx context.Context, topic string, payload DmqMessagePayload) (*DmqMessage, error) {
 	signer := s.ActiveSigner()
 	if signer == nil || isNilInterface(signer) {
@@ -156,6 +157,7 @@ func NewReloadingExternalKESSignerFromConfig(cfg ExternalKESSignerConfig) (*Relo
 	})
 }
 
+// Sign delegates to the currently active provider.
 func (s *ReloadingKESSigningProvider) Sign(payload []byte) (SignedKESPayload, error) {
 	provider := s.ActiveProvider()
 	if provider == nil || isNilInterface(provider) {
@@ -164,6 +166,7 @@ func (s *ReloadingKESSigningProvider) Sign(payload []byte) (SignedKESPayload, er
 	return provider.Sign(payload)
 }
 
+// SignAt delegates to the currently active provider.
 func (s *ReloadingKESSigningProvider) SignAt(period uint64, payload []byte) (SignedKESPayload, error) {
 	provider := s.ActiveProvider()
 	if provider == nil || isNilInterface(provider) {
@@ -172,6 +175,7 @@ func (s *ReloadingKESSigningProvider) SignAt(period uint64, payload []byte) (Sig
 	return provider.SignAt(period, payload)
 }
 
+// CurrentPeriod delegates to the currently active provider.
 func (s *ReloadingKESSigningProvider) CurrentPeriod() (uint64, error) {
 	provider := s.ActiveProvider()
 	if provider == nil || isNilInterface(provider) {
@@ -180,6 +184,8 @@ func (s *ReloadingKESSigningProvider) CurrentPeriod() (uint64, error) {
 	return provider.CurrentPeriod()
 }
 
+// OperationalCertificate delegates to the currently active provider,
+// returning the zero value when no provider is active.
 func (s *ReloadingKESSigningProvider) OperationalCertificate() KESSigningCertificate {
 	provider := s.ActiveProvider()
 	if provider == nil || isNilInterface(provider) {

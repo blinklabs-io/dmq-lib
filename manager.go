@@ -24,6 +24,9 @@ import (
 	pcommon "github.com/blinklabs-io/gouroboros/protocol/common"
 )
 
+// Manager owns a set of DMQ topics and their node-to-node services. It
+// provides publish, submit, and subscribe operations per topic and shuts the
+// whole set down as one unit. All methods are safe for concurrent use.
 type Manager struct {
 	logger *slog.Logger
 	clock  Clock
@@ -39,6 +42,8 @@ type Manager struct {
 	closed   bool
 }
 
+// NewManager creates a Manager. Topics must be registered with RegisterTopic
+// before use, and the Manager should be released with Shutdown.
 func NewManager(cfg ManagerConfig) *Manager {
 	logger := cfg.Logger
 	if logger == nil {
@@ -61,6 +66,10 @@ func NewManager(cfg ManagerConfig) *Manager {
 	}
 }
 
+// RegisterTopic creates a topic with the given configuration. Zero-valued
+// config fields are replaced with defaults, and the Manager's signer and
+// authenticator fill in when the topic does not provide its own. It returns
+// ErrTopicExists when the topic is already registered.
 func (m *Manager) RegisterTopic(topic string, cfg TopicConfig) error {
 	if topic == "" {
 		return errors.New("topic is required")
@@ -85,6 +94,10 @@ func (m *Manager) RegisterTopic(topic string, cfg TopicConfig) error {
 	return nil
 }
 
+// Publish signs a message body with the topic's Signer and submits the result
+// to the topic queue. It applies the topic's default TTL and returns the
+// signed message on success, or ErrSignerRequired when no signer is
+// configured.
 func (m *Manager) Publish(ctx context.Context, topic string, body []byte) (*DmqMessage, error) {
 	rt, err := m.topic(topic)
 	if err != nil {
@@ -93,6 +106,10 @@ func (m *Manager) Publish(ctx context.Context, topic string, body []byte) (*DmqM
 	return rt.publish(ctx, body)
 }
 
+// SubmitSigned submits an already signed CIP-0137 message to the topic queue
+// as a local message. The message is validated for body size, deterministic
+// message ID, TTL, duplicates, and (when required) authentication before it
+// is queued and fanned out to subscribers.
 func (m *Manager) SubmitSigned(ctx context.Context, topic string, msg *DmqMessage) error {
 	rt, err := m.topic(topic)
 	if err != nil {
@@ -101,6 +118,9 @@ func (m *Manager) SubmitSigned(ctx context.Context, topic string, msg *DmqMessag
 	return rt.submitSigned(ctx, msg, MessageSourceLocal, nil)
 }
 
+// SubmitRemote submits a signed message received from a remote peer to the
+// topic queue. It performs the same validation as SubmitSigned but records
+// the message source and originating peer in the subscriber envelope.
 func (m *Manager) SubmitRemote(ctx context.Context, topic string, msg *DmqMessage, peer *Peer) error {
 	rt, err := m.topic(topic)
 	if err != nil {
@@ -109,6 +129,9 @@ func (m *Manager) SubmitRemote(ctx context.Context, topic string, msg *DmqMessag
 	return rt.submitSigned(ctx, msg, MessageSourceRemote, peer)
 }
 
+// Subscribe registers a local fanout subscription on the topic. Accepted
+// messages are delivered on the returned Subscription's channel; release the
+// subscription with its Close method.
 func (m *Manager) Subscribe(topic string) (*Subscription, error) {
 	rt, err := m.topic(topic)
 	if err != nil {
@@ -117,6 +140,8 @@ func (m *Manager) Subscribe(topic string) (*Subscription, error) {
 	return rt.subscribe(), nil
 }
 
+// TopicPeers returns the topic's current peer set, refreshing ledger peers
+// through the configured snapshot provider when ledger discovery is enabled.
 func (m *Manager) TopicPeers(ctx context.Context, topic string) ([]Peer, error) {
 	rt, err := m.topic(topic)
 	if err != nil {
@@ -125,6 +150,10 @@ func (m *Manager) TopicPeers(ctx context.Context, topic string) ([]Peer, error) 
 	return rt.discoverPeers(ctx)
 }
 
+// Shutdown stops all node-to-node services, closes all topics and their
+// subscriptions, and marks the Manager closed. It is idempotent and returns
+// early with ctx.Err() if the context ends first; subsequent operations
+// return ErrManagerClosed.
 func (m *Manager) Shutdown(ctx context.Context) error {
 	m.mu.Lock()
 	if m.closed {

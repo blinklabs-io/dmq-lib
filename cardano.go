@@ -24,8 +24,10 @@ import (
 )
 
 const (
+	// CardanoSlotsPerKESPeriod is the slots-per-KES-period genesis parameter
+	// shared by Cardano mainnet, preprod, and preview. Custom networks may
+	// differ; use NetworkParams.SlotsPerKESPeriod as the source of truth.
 	CardanoSlotsPerKESPeriod = 129600
-	CardanoEpochLength       = 432000
 
 	// CardanoMainnetShelleyStartSlot is the absolute slot at the Shelley hard fork.
 	CardanoMainnetShelleyStartSlot = 4492800
@@ -58,7 +60,7 @@ func NetworkParamsForMagic(magic uint32) (NetworkParams, error) {
 			Start:             cardanoMainnetShelleyStart,
 			AbsoluteStartSlot: CardanoMainnetShelleyStartSlot,
 			SlotLength:        time.Second,
-			EpochLength:       CardanoEpochLength,
+			EpochLength:       432000,
 			SlotsPerKESPeriod: CardanoSlotsPerKESPeriod,
 			MaxKESEvolutions:  62,
 		}, nil
@@ -67,7 +69,7 @@ func NetworkParamsForMagic(magic uint32) (NetworkParams, error) {
 			Start:             cardanoPreprodShelleyStart,
 			AbsoluteStartSlot: CardanoPreprodShelleyStartSlot,
 			SlotLength:        time.Second,
-			EpochLength:       CardanoEpochLength,
+			EpochLength:       432000,
 			SlotsPerKESPeriod: CardanoSlotsPerKESPeriod,
 			MaxKESEvolutions:  62,
 		}, nil
@@ -75,7 +77,7 @@ func NetworkParamsForMagic(magic uint32) (NetworkParams, error) {
 		return NetworkParams{
 			Start:             time.Date(2022, 10, 25, 0, 0, 0, 0, time.UTC),
 			SlotLength:        time.Second,
-			EpochLength:       CardanoEpochLength,
+			EpochLength:       86400,
 			SlotsPerKESPeriod: CardanoSlotsPerKESPeriod,
 			MaxKESEvolutions:  62,
 		}, nil
@@ -83,6 +85,8 @@ func NetworkParamsForMagic(magic uint32) (NetworkParams, error) {
 	return NetworkParams{}, fmt.Errorf("unknown network magic %d (mainnet=764824073, preprod=1, preview=2)", magic)
 }
 
+// NetworkParamsFromShelleyGenesis builds NetworkParams from a Shelley genesis
+// JSON file, for networks not covered by NetworkParamsForMagic.
 func NetworkParamsFromShelleyGenesis(path string) (NetworkParams, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
@@ -140,6 +144,8 @@ func NetworkParamsFromShelleyGenesis(path string) (NetworkParams, error) {
 	}, nil
 }
 
+// CurrentKESPeriod returns the absolute KES period at the given time for a
+// well-known Cardano network identified by its network magic.
 func CurrentKESPeriod(magic uint32, now time.Time) (uint64, error) {
 	p, err := NetworkParamsForMagic(magic)
 	if err != nil {
@@ -148,6 +154,8 @@ func CurrentKESPeriod(magic uint32, now time.Time) (uint64, error) {
 	return CurrentKESPeriodFor(p, now)
 }
 
+// CurrentKESPeriodFor returns the absolute KES period at the given time for
+// the supplied network parameters.
 func CurrentKESPeriodFor(p NetworkParams, now time.Time) (uint64, error) {
 	if p.SlotsPerKESPeriod == 0 {
 		return 0, errors.New("slotsPerKESPeriod must be > 0")
@@ -159,6 +167,8 @@ func CurrentKESPeriodFor(p NetworkParams, now time.Time) (uint64, error) {
 	return slot / p.SlotsPerKESPeriod, nil
 }
 
+// CurrentEpochFor returns the epoch number at the given time, counted from
+// the network parameters' start time.
 func CurrentEpochFor(p NetworkParams, now time.Time) (uint64, error) {
 	if p.EpochLength == 0 {
 		return 0, errors.New("epochLength must be > 0")
@@ -170,6 +180,9 @@ func CurrentEpochFor(p NetworkParams, now time.Time) (uint64, error) {
 	return slot / p.EpochLength, nil
 }
 
+// CurrentSlotFor returns the slot at the given time, relative to the network
+// parameters' start time. Add NetworkParams.AbsoluteStartSlot for the
+// absolute chain slot.
 func CurrentSlotFor(p NetworkParams, now time.Time) (uint64, error) {
 	slotLength := p.SlotLength
 	if slotLength <= 0 {
@@ -196,6 +209,9 @@ func currentAbsoluteSlotFor(p NetworkParams, now time.Time) (uint64, error) {
 	return p.AbsoluteStartSlot + slot, nil
 }
 
+// KESPeriodStart returns the wall-clock time at which the given absolute KES
+// period begins. It returns the zero time when the period is before the
+// network start or the computation overflows.
 func KESPeriodStart(p NetworkParams, period uint64) time.Time {
 	slotLength := p.SlotLength
 	if slotLength <= 0 {

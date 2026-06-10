@@ -282,7 +282,12 @@ func (t *topicRuntime) callError(ctx context.Context, err error) {
 	}
 }
 
+// Subscription is a local fanout subscription to a topic, created by
+// Manager.Subscribe or TopicNode.Subscribe.
 type Subscription struct {
+	// C delivers accepted messages. It is closed when the subscription or its
+	// topic is closed. Messages are dropped (not blocked on) when the channel
+	// buffer is full.
 	C <-chan Message
 
 	topic  *topicRuntime
@@ -290,6 +295,8 @@ type Subscription struct {
 	closed atomic.Bool
 }
 
+// Close detaches the subscription from its topic and closes C. It returns
+// ErrSubscriptionClosed when called more than once.
 func (s *Subscription) Close() error {
 	if s == nil || s.topic == nil {
 		return nil
