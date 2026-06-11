@@ -22,26 +22,40 @@ import (
 
 var errTopicNodeNil = errors.New("dmq topic node is nil")
 
+// TopicNodeConfig configures a TopicNode.
 type TopicNodeConfig struct {
+	// Topic is the DMQ topic name. Required.
 	Topic string
 
+	// ManagerConfig configures the node's underlying Manager.
 	ManagerConfig ManagerConfig
-	TopicConfig   TopicConfig
+
+	// TopicConfig configures the node's single topic.
+	TopicConfig TopicConfig
 
 	// TopologyFile and StaticPeers are merged into TopicConfig.Discovery before
 	// the topic is registered.
 	TopologyFile string
 	StaticPeers  []Peer
 
+	// NodeToNode configures node-to-node networking. Networking starts only
+	// when a listen address, peers, or a peer discovery source is configured.
 	NodeToNode NodeToNodeConfig
 }
 
+// TopicNode is a single-topic DMQ node that bundles a Manager, one registered
+// topic, and (when configured) a node-to-node service into one unit with a
+// single lifecycle.
 type TopicNode struct {
 	topic   string
 	manager *Manager
 	service *NodeToNodeService
 }
 
+// NewTopicNode creates a Manager, registers the topic, and starts
+// node-to-node networking when a listen address, peers, or a peer discovery
+// source is configured. On failure, everything already started is shut down
+// before returning. Release the node with Shutdown or Close.
 func NewTopicNode(ctx context.Context, cfg TopicNodeConfig) (*TopicNode, error) {
 	if ctx == nil {
 		return nil, errors.New("context is nil")
@@ -77,6 +91,7 @@ func NewTopicNode(ctx context.Context, cfg TopicNodeConfig) (*TopicNode, error) 
 	return node, nil
 }
 
+// Topic returns the node's topic name.
 func (n *TopicNode) Topic() string {
 	if n == nil {
 		return ""
@@ -84,6 +99,8 @@ func (n *TopicNode) Topic() string {
 	return n.topic
 }
 
+// Manager returns the node's underlying Manager, for operations not exposed
+// directly on TopicNode.
 func (n *TopicNode) Manager() *Manager {
 	if n == nil {
 		return nil
@@ -91,6 +108,8 @@ func (n *TopicNode) Manager() *Manager {
 	return n.manager
 }
 
+// NodeToNodeService returns the node's networking service, or nil when
+// networking was not configured.
 func (n *TopicNode) NodeToNodeService() *NodeToNodeService {
 	if n == nil {
 		return nil
@@ -98,6 +117,8 @@ func (n *TopicNode) NodeToNodeService() *NodeToNodeService {
 	return n.service
 }
 
+// Publish signs and submits a message body on the node's topic. See
+// Manager.Publish.
 func (n *TopicNode) Publish(ctx context.Context, body []byte) (*DmqMessage, error) {
 	if n == nil || n.manager == nil {
 		return nil, errTopicNodeNil
@@ -105,6 +126,8 @@ func (n *TopicNode) Publish(ctx context.Context, body []byte) (*DmqMessage, erro
 	return n.manager.Publish(ctx, n.topic, body)
 }
 
+// SubmitSigned submits an already signed message on the node's topic. See
+// Manager.SubmitSigned.
 func (n *TopicNode) SubmitSigned(ctx context.Context, msg *DmqMessage) error {
 	if n == nil || n.manager == nil {
 		return errTopicNodeNil
@@ -112,6 +135,8 @@ func (n *TopicNode) SubmitSigned(ctx context.Context, msg *DmqMessage) error {
 	return n.manager.SubmitSigned(ctx, n.topic, msg)
 }
 
+// Subscribe registers a local fanout subscription on the node's topic. See
+// Manager.Subscribe.
 func (n *TopicNode) Subscribe() (*Subscription, error) {
 	if n == nil || n.manager == nil {
 		return nil, errTopicNodeNil
@@ -119,6 +144,8 @@ func (n *TopicNode) Subscribe() (*Subscription, error) {
 	return n.manager.Subscribe(n.topic)
 }
 
+// ListenAddr returns the node-to-node listener address, or nil when no
+// listener is running.
 func (n *TopicNode) ListenAddr() net.Addr {
 	if n == nil || n.service == nil {
 		return nil
@@ -126,6 +153,8 @@ func (n *TopicNode) ListenAddr() net.Addr {
 	return n.service.ListenAddr()
 }
 
+// PeerCount returns the number of established node-to-node peer connections,
+// or zero when networking is not running.
 func (n *TopicNode) PeerCount() int {
 	if n == nil || n.service == nil {
 		return 0
@@ -133,6 +162,8 @@ func (n *TopicNode) PeerCount() int {
 	return n.service.PeerCount()
 }
 
+// Shutdown stops the node's networking, topic, and Manager. See
+// Manager.Shutdown.
 func (n *TopicNode) Shutdown(ctx context.Context) error {
 	if n == nil || n.manager == nil {
 		return nil
@@ -143,6 +174,7 @@ func (n *TopicNode) Shutdown(ctx context.Context) error {
 	return n.manager.Shutdown(ctx)
 }
 
+// Close is Shutdown with a background context, satisfying io.Closer.
 func (n *TopicNode) Close() error {
 	return n.Shutdown(context.Background())
 }

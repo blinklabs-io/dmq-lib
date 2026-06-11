@@ -32,26 +32,60 @@ import (
 	"github.com/blinklabs-io/gouroboros/protocol/localstatequery"
 )
 
+// DiscoveryConfig configures a topic's peer sources. Use NewDiscoveryConfig
+// to build one from a topology file path without handling parser types
+// directly.
 type DiscoveryConfig struct {
-	Topology    *dtopology.TopologyConfig
+	// Topology contributes local-root, public-root, and bootstrap peers from
+	// a Cardano node topology file. See ParseTopologyFile and ReadTopology.
+	Topology *dtopology.TopologyConfig
+
+	// StaticPeers are explicitly configured peers.
 	StaticPeers []Peer
 
-	PeerSharing      bool
-	PeerSharingQuota int
-	TopologyQuota    int
+	// PeerSharing enables accepting peers learned through peer sharing.
+	PeerSharing bool
 
+	// PeerSharingQuota caps peers selected from peer sharing. Zero uses the
+	// default of 20.
+	PeerSharingQuota int
+
+	// TopologyQuota caps peers selected from topology and static sources.
+	// Zero uses the default of 20.
+	TopologyQuota int
+
+	// LedgerPeers configures discovery of peers from ledger relay snapshots.
 	LedgerPeers LedgerPeerDiscoveryConfig
 }
 
+// LedgerPeerDiscoveryConfig configures peer discovery from Cardano ledger
+// relay snapshots.
 type LedgerPeerDiscoveryConfig struct {
+	// Enabled turns ledger peer discovery on.
 	Enabled bool
 
+	// UseLedgerAfterSlot defers ledger peer use until the chain has reached
+	// the given slot.
 	UseLedgerAfterSlot int64
-	RefreshInterval    time.Duration
-	Target             int
-	BigLedgerTarget    int
 
-	Provider         LedgerPeerSnapshotProvider
+	// RefreshInterval is how often the snapshot is refreshed. Zero uses the
+	// default of one hour.
+	RefreshInterval time.Duration
+
+	// Target caps peers selected from the full ledger pool. Zero uses the
+	// default of 20.
+	Target int
+
+	// BigLedgerTarget caps peers selected from the big-ledger (highest stake)
+	// pool. Zero uses the default of 5.
+	BigLedgerTarget int
+
+	// Provider supplies ledger relay snapshots. Required when Enabled is true
+	// unless AllowUnsupported is set.
+	Provider LedgerPeerSnapshotProvider
+
+	// AllowUnsupported falls back to the non-ledger peer set instead of
+	// failing when the provider is missing or cannot produce snapshots.
 	AllowUnsupported bool
 }
 
@@ -60,32 +94,46 @@ type LedgerPeerSnapshotProvider interface {
 	LedgerPeerSnapshot(ctx context.Context, kind LedgerPeerSnapshotKind) (LedgerPeerSnapshot, error)
 }
 
+// LedgerPeerSnapshotKind selects which ledger peer population a snapshot
+// covers.
 type LedgerPeerSnapshotKind string
 
 const (
+	// LedgerPeerSnapshotAll covers all registered pools' relays.
 	LedgerPeerSnapshotAll LedgerPeerSnapshotKind = "all-ledger-peers"
+	// LedgerPeerSnapshotBig covers only the highest-stake pools that together
+	// hold roughly 90% of total stake.
 	LedgerPeerSnapshotBig LedgerPeerSnapshotKind = "big-ledger-peers"
 )
 
+// LedgerPeerSnapshot is a point-in-time view of pool relays registered on the
+// ledger, taken at the given slot.
 type LedgerPeerSnapshot struct {
 	Slot  uint64
 	Peers []LedgerPeer
 }
 
+// LedgerPeer is a stake pool's relay set as registered on the ledger.
 type LedgerPeer struct {
 	PoolID string
 	Stake  uint64
 	Relays []LedgerRelay
 }
 
+// LedgerRelayKind identifies how a ledger relay is addressed.
 type LedgerRelayKind string
 
 const (
+	// LedgerRelaySingleHostAddress is a relay addressed by IP and port.
 	LedgerRelaySingleHostAddress LedgerRelayKind = "single-host-address"
-	LedgerRelaySingleHostName    LedgerRelayKind = "single-host-name"
-	LedgerRelaySRV               LedgerRelayKind = "srv"
+	// LedgerRelaySingleHostName is a relay addressed by hostname and port.
+	LedgerRelaySingleHostName LedgerRelayKind = "single-host-name"
+	// LedgerRelaySRV is a relay addressed by a DNS SRV name.
+	LedgerRelaySRV LedgerRelayKind = "srv"
 )
 
+// LedgerRelay is a single relay endpoint from a pool's ledger registration.
+// Which fields are set depends on Kind.
 type LedgerRelay struct {
 	Kind LedgerRelayKind
 
@@ -96,35 +144,60 @@ type LedgerRelay struct {
 	IPv6     net.IP
 }
 
+// LedgerPeerPools holds the peers derived from a ledger snapshot: All covers
+// every pool relay ordered by descending stake, and Big covers only the
+// highest-stake pools. See BuildLedgerPeerPools.
 type LedgerPeerPools struct {
 	All []Peer
 	Big []Peer
 }
 
+// Peer describes a DMQ peer and where it was discovered.
 type Peer struct {
+	// Address is the dialable host:port form. When empty, it is derived from
+	// Host and Port.
 	Address string
-	Host    string
-	Port    uint
 
-	Source      PeerSource
-	PoolID      string
-	Stake       uint64
+	// Host is the hostname or IP without the port.
+	Host string
+
+	// Port is the TCP port. Zero means unknown (for example an SRV name).
+	Port uint
+
+	// Source records which discovery mechanism produced the peer.
+	Source PeerSource
+
+	// PoolID and Stake are set for ledger-discovered peers.
+	PoolID string
+	Stake  uint64
+
+	// Valency, WarmValency, Advertise, and Trustable carry the corresponding
+	// topology-file root group settings for topology-discovered peers.
 	Valency     uint
 	WarmValency uint
 	Advertise   bool
 	Trustable   bool
 }
 
+// PeerSource identifies the discovery mechanism that produced a Peer.
 type PeerSource string
 
 const (
-	PeerSourceStatic            PeerSource = "static"
+	// PeerSourceStatic marks explicitly configured peers.
+	PeerSourceStatic PeerSource = "static"
+	// PeerSourceTopologyLocalRoot marks peers from topology local roots.
 	PeerSourceTopologyLocalRoot PeerSource = "topology-local-root"
-	PeerSourceTopologyPublic    PeerSource = "topology-public-root"
+	// PeerSourceTopologyPublic marks peers from topology public roots.
+	PeerSourceTopologyPublic PeerSource = "topology-public-root"
+	// PeerSourceTopologyBootstrap marks peers from topology bootstrap peers.
 	PeerSourceTopologyBootstrap PeerSource = "topology-bootstrap"
-	PeerSourcePeerSharing       PeerSource = "peer-sharing"
-	PeerSourceLedger            PeerSource = "ledger"
-	PeerSourceBigLedger         PeerSource = "big-ledger"
+	// PeerSourcePeerSharing marks peers learned via peer sharing, including
+	// inbound node-to-node connections.
+	PeerSourcePeerSharing PeerSource = "peer-sharing"
+	// PeerSourceLedger marks peers from the full ledger relay set.
+	PeerSourceLedger PeerSource = "ledger"
+	// PeerSourceBigLedger marks peers from the highest-stake ledger pools.
+	PeerSourceBigLedger PeerSource = "big-ledger"
 )
 
 func defaultDiscoveryConfig(cfg DiscoveryConfig) DiscoveryConfig {
@@ -146,6 +219,8 @@ func defaultDiscoveryConfig(cfg DiscoveryConfig) DiscoveryConfig {
 	return cfg
 }
 
+// ReadTopology parses a Cardano node topology file from a reader for use in
+// DiscoveryConfig.Topology.
 func ReadTopology(r io.Reader) (*dtopology.TopologyConfig, error) {
 	return dtopology.NewTopologyConfigFromReader(r)
 }
@@ -170,6 +245,8 @@ func NewDiscoveryConfig(topologyFile string, staticPeers []Peer) (DiscoveryConfi
 	return cfg, nil
 }
 
+// TopologyPeers flattens a topology config's local roots, public roots, and
+// bootstrap peers into a Peer list tagged with the matching PeerSource.
 func TopologyPeers(cfg *dtopology.TopologyConfig) []Peer {
 	if cfg == nil {
 		return nil
@@ -204,6 +281,10 @@ func TopologyPeers(cfg *dtopology.TopologyConfig) []Peer {
 	return peers
 }
 
+// BuildLedgerPeerPools converts a ledger snapshot into peer pools: All
+// contains every pool relay ordered by descending stake, and Big contains
+// relays of the highest-stake pools that together hold roughly 90% of total
+// stake.
 func BuildLedgerPeerPools(snapshot LedgerPeerSnapshot) LedgerPeerPools {
 	all := make([]Peer, 0, len(snapshot.Peers))
 	for _, lp := range snapshot.Peers {
@@ -221,6 +302,8 @@ func BuildLedgerPeerPools(snapshot LedgerPeerSnapshot) LedgerPeerPools {
 	return LedgerPeerPools{All: all, Big: big}
 }
 
+// IsSRV reports whether the relay is addressed by a DNS SRV name, either
+// explicitly or inferred from a hostname with no port.
 func (r LedgerRelay) IsSRV() bool {
 	return r.Kind == LedgerRelaySRV || r.SRVName != "" ||
 		(r.Kind == "" && r.Hostname != "" && r.Port == 0)
@@ -358,17 +441,34 @@ func (t *topicRuntime) discoverPeers(ctx context.Context) ([]Peer, error) {
 	return peers, nil
 }
 
+// DingoLedgerPeerProviderAdapter adapts dingo ledger peer sources to
+// LedgerPeerSnapshotProvider. It prefers StakedProvider (which carries pool
+// stake), then a Provider that also implements StakedLedgerPeerProvider, and
+// finally falls back to relay-only Provider data when AllowRelayOnly is set.
 type DingoLedgerPeerProviderAdapter struct {
-	Provider       peergov.LedgerPeerProvider
+	// Provider is a dingo peer governor ledger peer source.
+	Provider peergov.LedgerPeerProvider
+
+	// StakedProvider, when set, is used instead of Provider and supplies pool
+	// stake metadata needed for big-ledger peer selection.
 	StakedProvider StakedLedgerPeerProvider
+
+	// AllowRelayOnly permits stake-less snapshots from Provider. Big-ledger
+	// snapshots remain unsupported in that mode.
 	AllowRelayOnly bool
 }
 
+// StakedLedgerPeerProvider supplies ledger peers with pool stake metadata and
+// the slot the data was observed at.
 type StakedLedgerPeerProvider interface {
 	GetLedgerPeers() ([]LedgerPeer, error)
 	CurrentSlot() uint64
 }
 
+// LedgerPeerSnapshot implements LedgerPeerSnapshotProvider. It returns
+// ErrLedgerPeerSnapshotUnsupported when only relay-level data is available
+// and AllowRelayOnly is false, or when a big-ledger snapshot is requested
+// without stake metadata.
 func (a DingoLedgerPeerProviderAdapter) LedgerPeerSnapshot(ctx context.Context, kind LedgerPeerSnapshotKind) (LedgerPeerSnapshot, error) {
 	if a.StakedProvider != nil {
 		return stakedProviderSnapshot(ctx, a.StakedProvider)
@@ -422,14 +522,21 @@ func stakedProviderSnapshot(ctx context.Context, provider StakedLedgerPeerProvid
 	return LedgerPeerSnapshot{Slot: provider.CurrentSlot(), Peers: cloneLedgerPeers(peers)}, nil
 }
 
+// LocalStateQueryLedgerPeerSnapshotClient is the subset of the gOuroboros
+// local-state-query client used to fetch ledger peer snapshots.
 type LocalStateQueryLedgerPeerSnapshotClient interface {
 	GetLedgerPeerSnapshot(localstatequery.LedgerPeerKind) (*localstatequery.LedgerPeerSnapshotResult, error)
 }
 
+// LocalStateQueryLedgerPeerSnapshotProvider is a LedgerPeerSnapshotProvider
+// backed by a Cardano node's local-state-query protocol.
 type LocalStateQueryLedgerPeerSnapshotProvider struct {
 	Client LocalStateQueryLedgerPeerSnapshotClient
 }
 
+// LedgerPeerSnapshot implements LedgerPeerSnapshotProvider. It returns
+// ErrLedgerPeerSnapshotUnsupported when the node's protocol version does not
+// support the snapshot query.
 func (p LocalStateQueryLedgerPeerSnapshotProvider) LedgerPeerSnapshot(ctx context.Context, kind LedgerPeerSnapshotKind) (LedgerPeerSnapshot, error) {
 	if p.Client == nil {
 		return LedgerPeerSnapshot{}, ErrLedgerPeerSnapshotProviderUnset
@@ -631,6 +738,8 @@ func cloneIP(ip net.IP) net.IP {
 	return ret
 }
 
+// PeerSelectionConfig sets per-source-class peer quotas for
+// PeerSelector.Select. Zero or negative quotas are unlimited.
 type PeerSelectionConfig struct {
 	TopologyQuota  int
 	PeerShareQuota int
@@ -638,12 +747,16 @@ type PeerSelectionConfig struct {
 	BigLedgerQuota int
 }
 
+// PeerSelector accumulates peers from multiple discovery sources,
+// deduplicates them by source and address, and selects subsets under
+// per-source quotas. It is safe for concurrent use.
 type PeerSelector struct {
 	mu    sync.RWMutex
 	cfg   PeerSelectionConfig
 	peers map[string]Peer
 }
 
+// NewPeerSelector creates an empty PeerSelector with the given quotas.
 func NewPeerSelector(cfg PeerSelectionConfig) *PeerSelector {
 	return &PeerSelector{
 		cfg:   cfg,
@@ -651,6 +764,9 @@ func NewPeerSelector(cfg PeerSelectionConfig) *PeerSelector {
 	}
 }
 
+// AddPeers merges peers into the selector, deriving missing addresses from
+// host and port and replacing existing entries with the same source and
+// address. Peers with neither address nor host are skipped.
 func (s *PeerSelector) AddPeers(peers []Peer) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -685,6 +801,7 @@ func (s *PeerSelector) addPeersLocked(peers []Peer) {
 	}
 }
 
+// Peers returns all known peers sorted by source then address.
 func (s *PeerSelector) Peers() []Peer {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -696,6 +813,8 @@ func (s *PeerSelector) Peers() []Peer {
 	return ret
 }
 
+// Select returns up to n peers, honoring the per-source-class quotas
+// configured in PeerSelectionConfig. n <= 0 means no overall limit.
 func (s *PeerSelector) Select(n int) []Peer {
 	peers := s.Peers()
 	selected := make([]Peer, 0, len(peers))

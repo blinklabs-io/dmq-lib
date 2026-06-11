@@ -41,12 +41,15 @@ import (
 
 const defaultExternalKESSignerTimeout = 5 * time.Second
 
+// TextEnvelope is the cardano-cli JSON key/certificate file format.
 type TextEnvelope struct {
 	Type        string `json:"type"`
 	Description string `json:"description"`
 	CborHex     string `json:"cborHex"`
 }
 
+// KESSigningKey is a KES secret key and its verification key, as loaded from
+// a cardano-cli text-envelope file.
 type KESSigningKey struct {
 	SecretKeyBytes  []byte
 	VerificationKey []byte
@@ -62,20 +65,42 @@ type KESSigningCertificate struct {
 	ColdVKey    []byte
 }
 
+// SignedKESPayload is the result of signing a payload with a
+// KESSigningProvider: the KES verification key, the relative KES period the
+// signature was made at, and the signature itself.
 type SignedKESPayload struct {
 	VKey      []byte
 	Period    uint64
 	Signature []byte
 }
 
+// OperationalCredentialStatus reports the KES validity window of an
+// operational certificate at a point in time, as computed by
+// NewOperationalCredentialStatus.
 type OperationalCredentialStatus struct {
-	KESVKey                []byte
-	OpCertKESPeriod        uint64
-	CurrentKESPeriod       uint64
-	RelativeKESPeriod      uint64
-	MaxKESEvolutions       uint64
+	// KESVKey is the certificate's KES verification key.
+	KESVKey []byte
+
+	// OpCertKESPeriod is the certificate's starting absolute KES period.
+	OpCertKESPeriod uint64
+
+	// CurrentKESPeriod is the absolute KES period at the evaluation time.
+	CurrentKESPeriod uint64
+
+	// RelativeKESPeriod is CurrentKESPeriod minus OpCertKESPeriod.
+	RelativeKESPeriod uint64
+
+	// MaxKESEvolutions is the number of KES evolutions the certificate
+	// supports.
+	MaxKESEvolutions uint64
+
+	// RemainingKESEvolutions is how many evolutions remain before the
+	// certificate must be rotated.
 	RemainingKESEvolutions uint64
-	ExpiresAt              time.Time
+
+	// ExpiresAt is the wall-clock time at which the certificate's KES
+	// validity ends.
+	ExpiresAt time.Time
 }
 
 // KESSigningProvider signs arbitrary payload bytes at a relative KES period.
@@ -88,10 +113,17 @@ type KESSigningProvider interface {
 	OperationalCertificate() KESSigningCertificate
 }
 
+// KESSigningProviderSigner adapts a KESSigningProvider to the package's
+// Signer interface so it can sign DMQ messages for Manager.Publish.
 type KESSigningProviderSigner struct {
 	Provider KESSigningProvider
 }
 
+// KESSigner is an in-process KESSigningProvider backed by a KES key and
+// operational certificate loaded from cardano-cli text-envelope files. It
+// derives the current relative period from the network clock, evolves its
+// in-memory KES key forward as periods advance, and is safe for concurrent
+// use.
 type KESSigner struct {
 	mu      sync.Mutex
 	network NetworkParams
@@ -100,12 +132,26 @@ type KESSigner struct {
 	now     func() time.Time
 }
 
+// ExternalKESSignerConfig configures an ExternalKESSigner.
 type ExternalKESSignerConfig struct {
-	Command                    string
+	// Command is the absolute path of the helper executable invoked for each
+	// signature. It receives the relative KES period as its only argument and
+	// the payload on stdin, and must print the signature (hex or base64) to
+	// stdout.
+	Command string
+
+	// OperationalCertificatePath is the path to the operational certificate
+	// file in cardano-cli text-envelope format.
 	OperationalCertificatePath string
-	Network                    NetworkParams
-	Timeout                    time.Duration
-	Now                        func() time.Time
+
+	// Network supplies the timing parameters used to derive KES periods.
+	Network NetworkParams
+
+	// Timeout bounds each helper invocation. Zero uses a 5-second default.
+	Timeout time.Duration
+
+	// Now overrides the time source. Nil uses the system clock.
+	Now func() time.Time
 
 	// EnvPrefix controls the environment variable prefix passed to the helper.
 	// The default is DMQ, producing DMQ_KES_VKEY_HEX, DMQ_KES_PERIOD, and
@@ -113,6 +159,10 @@ type ExternalKESSignerConfig struct {
 	EnvPrefix string
 }
 
+// ExternalKESSigner is a KESSigningProvider that delegates each signature to
+// an external helper process, keeping the KES secret key out of this process.
+// The helper's output is verified against the operational certificate's KES
+// verification key before being returned.
 type ExternalKESSigner struct {
 	command    string
 	opCertPath string
@@ -123,6 +173,8 @@ type ExternalKESSigner struct {
 	envPrefix  string
 }
 
+// ReadTextEnvelope reads a cardano-cli text-envelope file and returns its
+// decoded CBOR content and envelope type.
 func ReadTextEnvelope(path string) (cborData []byte, kind string, err error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
@@ -139,6 +191,8 @@ func ReadTextEnvelope(path string) (cborData []byte, kind string, err error) {
 	return cborData, env.Type, nil
 }
 
+// LoadKESSigningKey loads a KES signing key from a cardano-cli text-envelope
+// file and validates the key sizes.
 func LoadKESSigningKey(path string) (KESSigningKey, error) {
 	loaded, err := bursa.LoadKeyFromFile(path)
 	if err != nil {
@@ -156,6 +210,8 @@ func LoadKESSigningKey(path string) (KESSigningKey, error) {
 	}, nil
 }
 
+// LoadOperationalCertificate loads an operational certificate from a
+// cardano-cli text-envelope file and verifies its cold-key signature.
 func LoadOperationalCertificate(path string) (KESSigningCertificate, error) {
 	loaded, err := bursa.LoadKeyFromFile(path)
 	if err != nil {
@@ -174,6 +230,9 @@ func LoadOperationalCertificate(path string) (KESSigningCertificate, error) {
 	return cert, nil
 }
 
+// ParseOperationalCertificateCBOR decodes the raw CBOR of an operational
+// certificate. Unlike LoadOperationalCertificate it does not verify the
+// cold-key signature; call ValidateOperationalCertificate for that.
 func ParseOperationalCertificateCBOR(certBytes []byte) (KESSigningCertificate, error) {
 	var outer []any
 	if _, err := cbor.Decode(certBytes, &outer); err != nil {
@@ -232,6 +291,8 @@ func readCBORUint(v any, name string) (uint64, error) {
 	}
 }
 
+// ValidateOperationalCertificate checks the certificate's key and signature
+// sizes and verifies the cold-key signature over the certificate body.
 func ValidateOperationalCertificate(cert KESSigningCertificate) error {
 	if len(cert.KESVKey) != ed25519.PublicKeySize {
 		return fmt.Errorf("opcert KES verification key size: got %d, want %d", len(cert.KESVKey), ed25519.PublicKeySize)
@@ -252,6 +313,9 @@ func ValidateOperationalCertificate(cert KESSigningCertificate) error {
 	return nil
 }
 
+// ValidateOperationalCredentials loads a KES signing key and operational
+// certificate from files and confirms they belong together, returning
+// ErrKESKeyMismatch when they do not.
 func ValidateOperationalCredentials(kesKeyPath, opCertPath string) error {
 	kesKey, err := LoadKESSigningKey(kesKeyPath)
 	if err != nil {
@@ -267,6 +331,8 @@ func ValidateOperationalCredentials(kesKeyPath, opCertPath string) error {
 	return nil
 }
 
+// KESVerificationKeyFromOpCert loads an operational certificate file and
+// returns its KES verification key.
 func KESVerificationKeyFromOpCert(path string) ([]byte, error) {
 	cert, err := LoadOperationalCertificate(path)
 	if err != nil {
@@ -275,6 +341,8 @@ func KESVerificationKeyFromOpCert(path string) ([]byte, error) {
 	return cloneBytes(cert.KESVKey), nil
 }
 
+// ColdVerificationKeyFromOpCert loads an operational certificate file and
+// returns its cold verification key.
 func ColdVerificationKeyFromOpCert(path string) ([]byte, error) {
 	cert, err := LoadOperationalCertificate(path)
 	if err != nil {
@@ -299,10 +367,15 @@ func PoolIDFromColdKey(coldVKey []byte) (string, error) {
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
+// NewKESSigner creates an in-process KES signer from key and
+// operational-certificate files, using the system clock to derive periods.
 func NewKESSigner(kesKeyPath, opCertPath string, params NetworkParams) (*KESSigner, error) {
 	return NewKESSignerWithClock(kesKeyPath, opCertPath, params, time.Now)
 }
 
+// NewKESSignerWithClock creates an in-process KES signer with an injected
+// clock. It loads and cross-checks the KES key and operational certificate,
+// returning ErrKESKeyMismatch when they do not belong together.
 func NewKESSignerWithClock(kesKeyPath, opCertPath string, params NetworkParams, now func() time.Time) (*KESSigner, error) {
 	if now == nil {
 		now = time.Now
@@ -333,6 +406,11 @@ func NewKESSignerWithClock(kesKeyPath, opCertPath string, params NetworkParams, 
 	}, nil
 }
 
+// NewOperationalCredentialStatus reports the KES validity window of the
+// operational certificate at opCertPath as of the given time. When kesKeyPath
+// is non-empty the KES signing key is also loaded and cross-checked against
+// the certificate. It returns an error when the certificate is not yet valid
+// or its KES evolutions are exhausted.
 func NewOperationalCredentialStatus(kesKeyPath, opCertPath string, params NetworkParams, now time.Time) (OperationalCredentialStatus, error) {
 	if params.Start.IsZero() || params.SlotsPerKESPeriod == 0 {
 		return OperationalCredentialStatus{}, errors.New("network params: start and slotsPerKESPeriod are required")
@@ -373,6 +451,8 @@ func NewOperationalCredentialStatus(kesKeyPath, opCertPath string, params Networ
 	}, nil
 }
 
+// OperationalCertificate returns a copy of the signer's operational
+// certificate.
 func (s *KESSigner) OperationalCertificate() KESSigningCertificate {
 	if s == nil {
 		return KESSigningCertificate{}
@@ -380,6 +460,9 @@ func (s *KESSigner) OperationalCertificate() KESSigningCertificate {
 	return cloneKESSigningCertificate(s.opCert)
 }
 
+// CurrentPeriod returns the current KES period relative to the operational
+// certificate's start period, derived from the configured clock and network
+// parameters.
 func (s *KESSigner) CurrentPeriod() (uint64, error) {
 	if s == nil {
 		return 0, ErrSignerRequired
@@ -389,6 +472,7 @@ func (s *KESSigner) CurrentPeriod() (uint64, error) {
 	return currentRelativePeriodFor(s.network, s.opCert, s.now())
 }
 
+// Sign signs the payload at the current relative KES period.
 func (s *KESSigner) Sign(payload []byte) (SignedKESPayload, error) {
 	if s == nil {
 		return SignedKESPayload{}, ErrSignerRequired
@@ -402,6 +486,9 @@ func (s *KESSigner) Sign(payload []byte) (SignedKESPayload, error) {
 	return s.signAtLocked(relPeriod, payload)
 }
 
+// SignAt signs the payload at the given relative KES period, evolving the
+// in-memory KES key forward as needed. Signing at a period earlier than one
+// already used fails, because KES keys cannot evolve backward.
 func (s *KESSigner) SignAt(period uint64, payload []byte) (SignedKESPayload, error) {
 	if s == nil {
 		return SignedKESPayload{}, ErrSignerRequired
@@ -443,10 +530,14 @@ func (s *KESSigner) advanceTo(period uint64) error {
 	return nil
 }
 
+// NewExternalKESSigner creates an external-process KES signer using the
+// system clock to derive periods.
 func NewExternalKESSigner(command, opCertPath string, params NetworkParams, timeout time.Duration) (*ExternalKESSigner, error) {
 	return NewExternalKESSignerWithClock(command, opCertPath, params, timeout, time.Now)
 }
 
+// NewExternalKESSignerWithClock creates an external-process KES signer with
+// an injected clock.
 func NewExternalKESSignerWithClock(command, opCertPath string, params NetworkParams, timeout time.Duration, now func() time.Time) (*ExternalKESSigner, error) {
 	return NewExternalKESSignerFromConfig(ExternalKESSignerConfig{
 		Command:                    command,
@@ -457,6 +548,10 @@ func NewExternalKESSignerWithClock(command, opCertPath string, params NetworkPar
 	})
 }
 
+// NewExternalKESSignerFromConfig creates an external-process KES signer from
+// config. It validates the helper command path, loads and verifies the
+// operational certificate, and applies defaults for timeout, clock, and
+// environment prefix.
 func NewExternalKESSignerFromConfig(cfg ExternalKESSignerConfig) (*ExternalKESSigner, error) {
 	command := strings.TrimSpace(cfg.Command)
 	if command == "" {
@@ -517,6 +612,8 @@ func validEnvPrefix(prefix string) bool {
 	return true
 }
 
+// OperationalCertificate returns a copy of the signer's operational
+// certificate.
 func (s *ExternalKESSigner) OperationalCertificate() KESSigningCertificate {
 	if s == nil {
 		return KESSigningCertificate{}
@@ -524,6 +621,9 @@ func (s *ExternalKESSigner) OperationalCertificate() KESSigningCertificate {
 	return cloneKESSigningCertificate(s.opCert)
 }
 
+// CurrentPeriod returns the current KES period relative to the operational
+// certificate's start period, derived from the configured clock and network
+// parameters.
 func (s *ExternalKESSigner) CurrentPeriod() (uint64, error) {
 	if s == nil {
 		return 0, ErrSignerRequired
@@ -531,6 +631,7 @@ func (s *ExternalKESSigner) CurrentPeriod() (uint64, error) {
 	return currentRelativePeriodFor(s.network, s.opCert, s.now())
 }
 
+// Sign signs the payload at the current relative KES period.
 func (s *ExternalKESSigner) Sign(payload []byte) (SignedKESPayload, error) {
 	if s == nil {
 		return SignedKESPayload{}, ErrSignerRequired
@@ -542,6 +643,10 @@ func (s *ExternalKESSigner) Sign(payload []byte) (SignedKESPayload, error) {
 	return s.SignAt(period, payload)
 }
 
+// SignAt invokes the helper command to sign the payload at the given relative
+// KES period and verifies the returned signature before accepting it. The
+// helper receives the period as its argument, the payload on stdin, and the
+// EnvPrefix-derived environment variables.
 func (s *ExternalKESSigner) SignAt(period uint64, payload []byte) (SignedKESPayload, error) {
 	if s == nil {
 		return SignedKESPayload{}, ErrSignerRequired
@@ -624,6 +729,8 @@ func effectiveMaxKESEvolutions(network NetworkParams, depth uint64) uint64 {
 	return network.MaxKESEvolutions
 }
 
+// ParseExternalKESSignature decodes an external KES signer's stdout, which
+// must be a non-empty hex- or base64-encoded signature.
 func ParseExternalKESSignature(raw []byte) ([]byte, error) {
 	text := strings.TrimSpace(string(raw))
 	if text == "" {
@@ -645,14 +752,20 @@ func ParseExternalKESSignature(raw []byte) ([]byte, error) {
 	return sig, nil
 }
 
+// VerifyKESSignature reports whether signature is a valid KES signature over
+// payload under vkey at the given relative KES period.
 func VerifyKESSignature(vkey []byte, period uint64, payload, signature []byte) bool {
 	return kes.VerifySignedKES(vkey, period, payload, signature)
 }
 
+// NewKESSigningProviderSigner wraps a KESSigningProvider as a Signer.
 func NewKESSigningProviderSigner(provider KESSigningProvider) KESSigningProviderSigner {
 	return KESSigningProviderSigner{Provider: provider}
 }
 
+// BuildSignedMessage signs a message body with the provider and returns a
+// complete DMQ message with the given wire-format expiration. Use ExpiresAt
+// to derive expiresAt from a TTL.
 func BuildSignedMessage(ctx context.Context, provider KESSigningProvider, topic string, body []byte, expiresAt uint32) (*DmqMessage, error) {
 	payload := DmqMessagePayload{
 		MessageBody: cloneBytes(body),
@@ -661,6 +774,11 @@ func BuildSignedMessage(ctx context.Context, provider KESSigningProvider, topic 
 	return NewKESSigningProviderSigner(provider).Sign(ctx, topic, payload)
 }
 
+// Sign implements Signer. It stamps the payload with the provider's current
+// absolute KES period, signs the CIP-0137 signing bytes, cross-checks the
+// returned key and period against the provider's operational certificate, and
+// attaches the certificate and computed message ID. The payload must carry a
+// non-zero ExpiresAt.
 func (s KESSigningProviderSigner) Sign(ctx context.Context, topic string, payload DmqMessagePayload) (*DmqMessage, error) {
 	_ = ctx
 	_ = topic

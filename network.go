@@ -72,6 +72,10 @@ func (m *Manager) StartNodeToNode(ctx context.Context, topic string, cfg NodeToN
 	return s, nil
 }
 
+// NodeToNodeService runs DMQ node-to-node networking for one topic: an
+// optional TCP listener for inbound peers and reconnecting outbound dials,
+// each exchanging messages with the topic queue through the CIP-0137
+// message-submission protocol. Create one with Manager.StartNodeToNode.
 type NodeToNodeService struct {
 	manager *Manager
 	topic   *topicRuntime
@@ -141,6 +145,9 @@ func (s *NodeToNodeService) closeOnDone(ctx context.Context) {
 	_ = s.Close()
 }
 
+// Close stops the listener and all peer connections and waits for the
+// service's goroutines to finish. It is idempotent and is also triggered by
+// cancellation of the context passed to Manager.StartNodeToNode.
 func (s *NodeToNodeService) Close() error {
 	s.mu.Lock()
 	if s.closed {
@@ -175,6 +182,8 @@ func (s *NodeToNodeService) Close() error {
 	return errors.Join(errs...)
 }
 
+// ListenAddr returns the address the inbound listener is bound to, or nil
+// when no listener was configured.
 func (s *NodeToNodeService) ListenAddr() net.Addr {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -184,12 +193,17 @@ func (s *NodeToNodeService) ListenAddr() net.Addr {
 	return s.listener.Addr()
 }
 
+// PeerCount returns the number of currently established peer connections,
+// inbound and outbound.
 func (s *NodeToNodeService) PeerCount() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return len(s.peers)
 }
 
+// AddPeer starts a reconnecting outbound dial loop for the peer. Peers with
+// no address or host, duplicates of already-tracked outbound addresses, and
+// peers added after Close are ignored.
 func (s *NodeToNodeService) AddPeer(peer Peer) {
 	peer, ok := normalizeNodeToNodePeer(peer)
 	if !ok {
