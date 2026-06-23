@@ -99,7 +99,10 @@ func TestTopicNodeNodeToNodeStaticPeerRoundTrip(t *testing.T) {
 	nodeB, err := NewTopicNode(ctx, TopicNodeConfig{
 		Topic:         topic,
 		ManagerConfig: ManagerConfig{Signer: signer},
-		TopicConfig:   TopicConfig{NetworkMagic: 42},
+		TopicConfig: TopicConfig{
+			NetworkMagic:   42,
+			Authentication: AuthenticationConfig{AllowUnauthenticated: true},
+		},
 		NodeToNode: NodeToNodeConfig{
 			ListenAddress:   "127.0.0.1:0",
 			RequestInterval: 10 * time.Millisecond,
@@ -122,8 +125,11 @@ func TestTopicNodeNodeToNodeStaticPeerRoundTrip(t *testing.T) {
 	nodeA, err := NewTopicNode(ctx, TopicNodeConfig{
 		Topic:         topic,
 		ManagerConfig: ManagerConfig{Signer: signer},
-		TopicConfig:   TopicConfig{NetworkMagic: 42},
-		StaticPeers:   []Peer{{Address: addr.String()}},
+		TopicConfig: TopicConfig{
+			NetworkMagic:   42,
+			Authentication: AuthenticationConfig{AllowUnauthenticated: true},
+		},
+		StaticPeers: []Peer{{Address: addr.String()}},
 		NodeToNode: NodeToNodeConfig{
 			RequestInterval: 10 * time.Millisecond,
 			Reconnect: ReconnectConfig{

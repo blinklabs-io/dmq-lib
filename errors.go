@@ -69,6 +69,12 @@ var (
 	// topic was registered without a NetworkMagic.
 	ErrNetworkMagicRequired = errors.New("dmq network magic is required")
 
+	// ErrAuthenticationRequired is returned by Manager.StartNodeToNode when the
+	// topic has neither Authentication.Required nor
+	// Authentication.AllowUnauthenticated set, so node-to-node networking would
+	// otherwise accept and relay remote messages without verification.
+	ErrAuthenticationRequired = errors.New("dmq node-to-node requires message authentication; set Authentication.Required or Authentication.AllowUnauthenticated")
+
 	// ErrLedgerPeerSnapshotUnsupported is returned when the configured ledger
 	// peer provider cannot produce the requested snapshot kind.
 	ErrLedgerPeerSnapshotUnsupported = errors.New("ledger peer snapshot query unsupported")

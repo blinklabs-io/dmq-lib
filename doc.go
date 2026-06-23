@@ -66,8 +66,11 @@
 //	node, err := dmq.NewTopicNode(ctx, dmq.TopicNodeConfig{
 //		Topic:         "mithril-signatures",
 //		ManagerConfig: dmq.ManagerConfig{Signer: signer},
-//		TopicConfig:   dmq.TopicConfig{NetworkMagic: 764824073},
-//		TopologyFile:  "topology.json",
+//		TopicConfig: dmq.TopicConfig{
+//			NetworkMagic:   764824073,
+//			Authentication: dmq.AuthenticationConfig{Required: true},
+//		},
+//		TopologyFile: "topology.json",
 //		NodeToNode:    dmq.NodeToNodeConfig{ListenAddress: ":3141"},
 //	})
 //	if err != nil {
@@ -95,9 +98,14 @@
 //
 //	mgr := dmq.NewManager(dmq.ManagerConfig{Logger: logger, Signer: signer})
 //	defer mgr.Shutdown(ctx)
-//	if err := mgr.RegisterTopic("topic-a", dmq.TopicConfig{NetworkMagic: 1}); err != nil {
+//	if err := mgr.RegisterTopic("topic-a", dmq.TopicConfig{
+//		NetworkMagic:   1,
+//		Authentication: dmq.AuthenticationConfig{Required: true},
+//	}); err != nil {
 //		return err
 //	}
+//	// StartNodeToNode returns ErrAuthenticationRequired unless the topic sets
+//	// Authentication.Required or Authentication.AllowUnauthenticated.
 //	svc, err := mgr.StartNodeToNode(ctx, "topic-a", dmq.NodeToNodeConfig{
 //		ListenAddress: ":3141",
 //		Peers:         []dmq.Peer{{Host: "relay.example.com", Port: 3141}},

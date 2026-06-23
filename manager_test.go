@@ -111,7 +111,10 @@ func TestNodeToNodeServiceRoundTrip(t *testing.T) {
 	mA := NewManager(ManagerConfig{Signer: signer})
 	mB := NewManager(ManagerConfig{Signer: signer})
 	for name, manager := range map[string]*Manager{"A": mA, "B": mB} {
-		if err := manager.RegisterTopic(topic, TopicConfig{NetworkMagic: 42}); err != nil {
+		if err := manager.RegisterTopic(topic, TopicConfig{
+			NetworkMagic:   42,
+			Authentication: AuthenticationConfig{AllowUnauthenticated: true},
+		}); err != nil {
 			t.Fatalf("RegisterTopic %s: %v", name, err)
 		}
 	}
@@ -1092,7 +1095,10 @@ func TestStartNodeToNodeWarnsWhenAuthenticationNotRequired(t *testing.T) {
 	buf := &syncBuffer{}
 	logger := slog.New(slog.NewTextHandler(buf, &slog.HandlerOptions{Level: slog.LevelWarn}))
 	m := NewManager(ManagerConfig{Logger: logger, Signer: testSigner(t)})
-	if err := m.RegisterTopic("topic", TopicConfig{NetworkMagic: 42}); err != nil {
+	if err := m.RegisterTopic("topic", TopicConfig{
+		NetworkMagic:   42,
+		Authentication: AuthenticationConfig{AllowUnauthenticated: true},
+	}); err != nil {
 		t.Fatalf("RegisterTopic: %v", err)
 	}
 	svc, err := m.StartNodeToNode(ctx, "topic", NodeToNodeConfig{ListenAddress: "127.0.0.1:0"})
@@ -1124,5 +1130,24 @@ func TestStartNodeToNodeNoWarnWhenAuthenticationRequired(t *testing.T) {
 	defer func() { _ = svc.Close() }()
 	if got := buf.String(); strings.Contains(got, unauthenticatedNtNWarning) {
 		t.Fatalf("did not expect unauthenticated node-to-node warning, got: %q", got)
+	}
+}
+
+func TestStartNodeToNodeFailsWhenUnauthenticatedNotAllowed(t *testing.T) {
+	ctx := context.Background()
+	m := NewManager(ManagerConfig{Signer: testSigner(t)})
+	if err := m.RegisterTopic("topic", TopicConfig{NetworkMagic: 42}); err != nil {
+		t.Fatalf("RegisterTopic: %v", err)
+	}
+	svc, err := m.StartNodeToNode(ctx, "topic", NodeToNodeConfig{ListenAddress: "127.0.0.1:0"})
+	if !errors.Is(err, ErrAuthenticationRequired) {
+		if svc != nil {
+			_ = svc.Close()
+		}
+		t.Fatalf("StartNodeToNode error = %v, want %v", err, ErrAuthenticationRequired)
+	}
+	if svc != nil {
+		_ = svc.Close()
+		t.Fatal("StartNodeToNode returned a service despite failing authentication gate")
 	}
 }

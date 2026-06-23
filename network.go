@@ -51,6 +51,9 @@ func (m *Manager) StartNodeToNode(ctx context.Context, topic string, cfg NodeToN
 		return nil, ErrNetworkMagicRequired
 	}
 	if !rt.cfg.Authentication.Required {
+		if !rt.cfg.Authentication.AllowUnauthenticated {
+			return nil, ErrAuthenticationRequired
+		}
 		rt.logger.Warn(
 			"starting DMQ node-to-node networking without message authentication; " +
 				"messages from remote peers are accepted and relayed after only " +
