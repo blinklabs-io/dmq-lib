@@ -153,6 +153,14 @@ type AuthenticationConfig struct {
 	// Authenticator verifies messages when Required is true. Nil falls back
 	// to the Manager's authenticator, then to a default KES-only verifier.
 	Authenticator *pcommon.MessageAuthenticator
+
+	// AllowUnauthenticated opts a topic in to running node-to-node networking
+	// without message verification. Manager.StartNodeToNode fails with
+	// ErrAuthenticationRequired unless either Required or AllowUnauthenticated
+	// is set, so unauthenticated operation is always a deliberate choice. It is
+	// ignored when Required is true. When it takes effect, the unauthenticated
+	// node-to-node warning is still logged.
+	AllowUnauthenticated bool
 }
 
 // ReconnectConfig controls exponential backoff for outbound peer reconnects.
