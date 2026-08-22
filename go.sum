@@ -12,10 +12,10 @@ github.com/blinklabs-io/dingo v0.69.0 h1:ZcFQ2aGW80WDuF8E6EseSyoKsrzL2fQFC5ROCya
 github.com/blinklabs-io/dingo v0.69.0/go.mod h1:WOj0VugFU5Yxyj8HNzrbfl3UBdlBKs92WrsNvhBg9ho=
 github.com/blinklabs-io/go-bip39 v0.2.0 h1:rHYih+JzqaFVuP+UfvByKTAdJPeYtlvZu49yUGrZUk8=
 github.com/blinklabs-io/go-bip39 v0.2.0/go.mod h1:9Bp7a+XDc/KTPOqNnS7T/v1vH2lDXpmjM0GArwvOQL4=
-github.com/blinklabs-io/gouroboros v0.193.0 h1:9hnRF4sk+t5uvdE3PmcWc7DIleIloZICEYSi0ITBEHU=
-github.com/blinklabs-io/gouroboros v0.193.0/go.mod h1:eUBa+6pe2/v9aklJ6vbeh6bwjsevFgrAMtI29fCAQwU=
-github.com/blinklabs-io/ouroboros-mock v0.15.1 h1:mb08aon2DFaGFUj5RjHOkKbemmOtjY/6b4I1vdbebpI=
-github.com/blinklabs-io/ouroboros-mock v0.15.1/go.mod h1:ysGU8dMjG8ShMQco/aarR1xIRH7GPCIdhrnkM+J4IVA=
+github.com/blinklabs-io/gouroboros v0.193.3 h1:ao2dhsulyZP/Da/a4TgyDkZ/EXMVD3UAgEikKYYYBBs=
+github.com/blinklabs-io/gouroboros v0.193.3/go.mod h1:wCrv86t7VsYhW36JliNeaoqypbxU/WsB1Cq/9OMg0NA=
+github.com/blinklabs-io/ouroboros-mock v0.16.0 h1:uAPoFE+WOXX9hct1Kb725gYS/8SKzATrwCF7XKOZ0Xs=
+github.com/blinklabs-io/ouroboros-mock v0.16.0/go.mod h1:ysGU8dMjG8ShMQco/aarR1xIRH7GPCIdhrnkM+J4IVA=
 github.com/blinklabs-io/plutigo v0.3.0 h1:lUl7q96a+XSxpd7iEh0AxvnyMNp9s1wZITv/3RuCfkA=
 github.com/blinklabs-io/plutigo v0.3.0/go.mod h1:VTjGe02bLFU+fvlpe/TXe2xaEUEQN/DcsOO+YA0rrfQ=
 github.com/btcsuite/btcd/btcec/v2 v2.5.0 h1:KioMXOWa76b86sTZZOmbzv/ldaQCmB8KFAyn5PbB8E8=
@@ -61,8 +61,6 @@ github.com/minio/sha256-simd v1.0.1 h1:6kaan5IFmwTNynnKKpDHe6FWHohJOHhCPchzK49dz
 github.com/minio/sha256-simd v1.0.1/go.mod h1:Pz6AKMiUdngCLpeTL/RJY1M9rUuPMYujV5xJjtbRSN8=
 github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 h1:C3w9PqII01/Oq1c1nUAm88MOHcQC9l5mIlSMApZMrHA=
 github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822/go.mod h1:+n7T8mK8HuQTcFwEeznm/DIxMOiR9yIdICNftLE1DvQ=
-github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 h1:Jamvg5psRIccs7FGNTlIRMkT8wgtp5eCXdBlqhYGL6U=
-github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/prometheus/client_golang v1.23.2 h1:Je96obch5RDVy3FDMndoUsjAhG5Edi49h0RJWRi/o0o=
 github.com/prometheus/client_golang v1.23.2/go.mod h1:Tb1a6LWHB3/SPIzCoaDXI4I8UHKeFTEQ1YCr+0Gyqmg=
 github.com/prometheus/client_model v0.6.2 h1:oBsgwpGs7iVziMvrGhE53c/GrLUsZdHnqNwqPLxwZyk=
@@ -73,8 +71,8 @@ github.com/prometheus/procfs v0.16.1 h1:hZ15bTNuirocR6u0JZ6BAHHmwS1p8B4P6MRqxtzM
 github.com/prometheus/procfs v0.16.1/go.mod h1:teAbpZRB1iIAJYREa1LsoWUXykVXA1KlTmWl8x/U+Is=
 github.com/rogpeppe/go-internal v1.14.1 h1:UQB4HGPB6osV0SQTLymcB4TgvyWu6ZyliaW0tI/otEQ=
 github.com/rogpeppe/go-internal v1.14.1/go.mod h1:MaRKkUm5W0goXpeCfT7UZI6fk/L7L7so1lCWt35ZSgc=
-github.com/stretchr/testify v1.11.1 h1:7s2iGBzp5EwR7/aIZr8ao5+dra3wiQyKjjFuvgVKu7U=
-github.com/stretchr/testify v1.11.1/go.mod h1:wZwfW3scLgRK+23gO65QZefKpKQRnfz6sD981Nm4B6U=
+github.com/stretchr/testify v1.12.0 h1:K6Mr6jO9JICuend/5xzTM03ydSV3vdNRYAdPSukj8uI=
+github.com/stretchr/testify v1.12.0/go.mod h1:bOYBZb5qJ00vPzWfIqBUZPaxK8jWiXc6d3ErP4Ca9Gw=
 github.com/utxorpc/go-codegen v0.19.2 h1:IG8OhSc0GILy6emTeUM1/+t/PXbzJTmpJuRAhoWEkbM=
 github.com/utxorpc/go-codegen v0.19.2/go.mod h1:QG/UEOXM8HVrm6H7LhuYAeMSA1OFgL2kTjzIeNUWFNg=
 github.com/x448/float16 v0.8.4 h1:qLwI1I70+NjRFUR3zs1JPUCgaCXSh3SW62uAKT1mSBM=

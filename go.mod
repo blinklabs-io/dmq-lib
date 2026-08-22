@@ -7,7 +7,7 @@ toolchain go1.26.3
 require (
 	github.com/blinklabs-io/bursa v0.16.0
 	github.com/blinklabs-io/dingo v0.69.0
-	github.com/blinklabs-io/gouroboros v0.193.0
+	github.com/blinklabs-io/gouroboros v0.193.3
 	golang.org/x/crypto v0.55.0
 )
 
