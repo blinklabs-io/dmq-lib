@@ -8,7 +8,7 @@ require (
 	github.com/blinklabs-io/bursa v0.16.1-0.20260817233527-1eb8b64db609
 	github.com/blinklabs-io/dingo v0.70.2
 	github.com/blinklabs-io/gouroboros v0.202.6
-	golang.org/x/crypto v0.55.0
+	golang.org/x/crypto v0.56.0
 )
 
 require (
