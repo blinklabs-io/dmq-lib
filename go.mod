@@ -6,8 +6,8 @@ toolchain go1.26.3
 
 require (
 	github.com/blinklabs-io/bursa v0.16.1-0.20260817233527-1eb8b64db609
-	github.com/blinklabs-io/dingo v0.70.8
-	github.com/blinklabs-io/gouroboros v0.204.0
+	github.com/blinklabs-io/dingo v0.70.11
+	github.com/blinklabs-io/gouroboros v0.204.4
 	golang.org/x/crypto v0.56.0
 )
 
@@ -17,7 +17,7 @@ require (
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bits-and-blooms/bitset v1.24.6 // indirect
 	github.com/blinklabs-io/go-bip39 v0.2.0 // indirect
-	github.com/blinklabs-io/plutigo v0.6.0 // indirect
+	github.com/blinklabs-io/plutigo v0.6.1 // indirect
 	github.com/btcsuite/btcd/btcec/v2 v2.5.0 // indirect
 	github.com/btcsuite/btcd/btcutil v1.2.0 // indirect
 	github.com/btcsuite/btcd/chaincfg/chainhash v1.2.0 // indirect
