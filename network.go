@@ -409,7 +409,7 @@ type nodeToNodePeerConnection struct {
 	conn    net.Conn
 	muxer   *muxer.Muxer
 
-	errorCh      chan error
+	errorCh      chan struct{}
 	protoErrorCh chan error
 	done         chan struct{}
 	closeOnce    sync.Once
@@ -430,7 +430,7 @@ func newNodeToNodePeerConnection(
 		peer:         peer,
 		conn:         conn,
 		muxer:        muxer.New(conn),
-		errorCh:      make(chan error, 2),
+		errorCh:      make(chan struct{}, 1),
 		protoErrorCh: make(chan error, 10),
 		done:         make(chan struct{}),
 	}
@@ -587,7 +587,7 @@ func (p *nodeToNodePeerConnection) sendError(err error) {
 	p.lastErr = err
 	p.errMu.Unlock()
 	select {
-	case p.errorCh <- err:
+	case p.errorCh <- struct{}{}:
 	default:
 	}
 }
