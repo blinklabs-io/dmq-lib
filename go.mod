@@ -1,8 +1,6 @@
 module github.com/blinklabs-io/dmq-lib
 
-go 1.26.0
-
-toolchain go1.26.3
+go 1.26.10
 
 require (
 	github.com/blinklabs-io/bursa v0.16.1-0.20260817233527-1eb8b64db609
