@@ -89,6 +89,9 @@ func (m *Manager) RegisterTopic(topic string, cfg TopicConfig) error {
 	if cfg.Authentication.Required && cfg.Authentication.Authenticator == nil {
 		cfg.Authentication.Authenticator = m.auth
 	}
+	if cfg.Authentication.Required && cfg.Authentication.Authenticator == nil {
+		return ErrAuthenticatorRequired
+	}
 	rt := newTopicRuntime(topic, cfg, m.logger.With("topic", topic), m.clock)
 	m.topics[topic] = rt
 	return nil

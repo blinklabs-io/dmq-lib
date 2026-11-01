@@ -47,10 +47,6 @@ type topicRuntime struct {
 }
 
 func newTopicRuntime(name string, cfg TopicConfig, logger *slog.Logger, clock Clock) *topicRuntime {
-	if cfg.Authentication.Required && cfg.Authentication.Authenticator == nil {
-		cfg.Authentication.Authenticator = pcommon.NewMessageAuthenticator(logger)
-		pcommon.ApplyDefaultKESVerifier(cfg.Authentication.Authenticator)
-	}
 	rt := &topicRuntime{
 		name:        name,
 		cfg:         cfg,
@@ -180,6 +176,13 @@ func (t *topicRuntime) messageIDs(max int) []MessageIDAndSize {
 		}
 	}
 	return ids
+}
+
+func (t *topicRuntime) hasSeen(id []byte) bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	_, ok := t.seen[string(id)]
+	return ok
 }
 
 func (t *topicRuntime) messagesByIDs(ids [][]byte) []DmqMessage {

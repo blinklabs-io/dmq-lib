@@ -146,12 +146,13 @@ type TTLPolicy struct {
 type AuthenticationConfig struct {
 	// Required enables gOuroboros MessageAuthenticator verification in addition
 	// to deterministic message-id and TTL validation. It is off by default
-	// because production SPO validation needs the caller to configure active
-	// pool registration state and a KES verifier.
+	// because verification needs the caller to configure a gOuroboros
+	// authenticator backed by chain state.
 	Required bool
 
 	// Authenticator verifies messages when Required is true. Nil falls back
-	// to the Manager's authenticator, then to a default KES-only verifier.
+	// to the Manager's authenticator; RegisterTopic fails with
+	// ErrAuthenticatorRequired when neither is set.
 	Authenticator *pcommon.MessageAuthenticator
 
 	// AllowUnauthenticated opts a topic in to running node-to-node networking

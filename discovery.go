@@ -496,7 +496,7 @@ func (a DingoLedgerPeerProviderAdapter) LedgerPeerSnapshot(ctx context.Context, 
 		return LedgerPeerSnapshot{}, ctx.Err()
 	default:
 	}
-	relays, err := a.Provider.GetPoolRelays()
+	relays, err := a.Provider.GetPoolRelays(ctx)
 	if err != nil {
 		return LedgerPeerSnapshot{}, err
 	}
