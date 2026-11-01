@@ -417,7 +417,7 @@ type nodeToNodePeerConnection struct {
 	lastErr      error
 
 	messageSubmission *messagesubmission.MessageSubmission
-	flow              *submissionFlow
+	flows             *submissionFlows
 }
 
 func newNodeToNodePeerConnection(
@@ -507,8 +507,7 @@ func (p *nodeToNodePeerConnection) handshake(server bool) (version uint16, err e
 }
 
 func (p *nodeToNodePeerConnection) startMessageSubmission(version uint16) error {
-	msgCfg, flow, err := p.service.manager.messageSubmissionConfig(p.service.ctx, p.service.topic.name, &p.peer, submissionFlowOptions{
-		done:         p.done,
+	msgCfg, flows, err := p.service.manager.messageSubmissionConfig(p.service.ctx, p.service.topic.name, &p.peer, submissionFlowOptions{
 		requestCount: p.service.requestCount(),
 		holdInterval: p.service.requestInterval(),
 	})
@@ -522,7 +521,7 @@ func (p *nodeToNodePeerConnection) startMessageSubmission(version uint16) error 
 		Mode:         protocol.ProtocolModeNodeToNode,
 		Version:      version,
 	}
-	p.flow = flow
+	p.flows = flows
 	p.messageSubmission = messagesubmission.New(protoOptions, &msgCfg)
 	p.messageSubmission.Client.Start()
 	p.messageSubmission.Server.Start()
@@ -541,7 +540,9 @@ func (p *nodeToNodePeerConnection) startPull() {
 	if p.messageSubmission == nil || p.messageSubmission.Server == nil {
 		return
 	}
-	if err := p.flow.start(p.messageSubmission.Server); err != nil {
+	server := p.messageSubmission.Server
+	flow := p.flows.forConnection(p.connectionID().String(), server.StopChan())
+	if err := flow.start(server); err != nil {
 		p.sendError(fmt.Errorf("request DMQ message IDs: %w", err))
 	}
 }

@@ -251,6 +251,14 @@ so `StartNodeToNode` requires an explicit authentication decision: it returns
 `RegisterTopic` returns `ErrAuthenticatorRequired` otherwise.
 
 ```go
+// auth is a gOuroboros MessageAuthenticator built with
+// pcommon.NewMessageAuthenticator from chain-state lookups (stake
+// distribution, current slot, operational certificate issue numbers).
+m := dmq.NewManager(dmq.ManagerConfig{
+    Signer:        signer,
+    Authenticator: auth,
+})
+
 err := m.RegisterTopic("governance", dmq.TopicConfig{
     NetworkMagic:   764824073,
     Authentication: dmq.AuthenticationConfig{Required: true},

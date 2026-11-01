@@ -71,12 +71,54 @@ func (m *Manager) MessageSubmissionConfig(topic string) (messagesubmission.Confi
 }
 
 type submissionFlowOptions struct {
-	// done stops held blocking replies when the connection closes.
-	done <-chan struct{}
-	// requestCount is the number of message IDs requested per round.
+	// requestCount is the number of message IDs requested per round. Zero uses
+	// defaultNodeToNodeRequestCount.
 	requestCount uint16
 	// holdInterval is how often a held blocking request rechecks the queue.
+	// Zero uses defaultNodeToNodeRequestInterval.
 	holdInterval time.Duration
+}
+
+// submissionFlows holds one submissionFlow per connection. A returned
+// messagesubmission.Config can serve several connections, so the state cannot
+// live in the config's closures alone.
+type submissionFlows struct {
+	rt   *topicRuntime
+	peer *Peer
+	ctx  context.Context
+	opts submissionFlowOptions
+
+	mu    sync.Mutex
+	flows map[string]*submissionFlow
+}
+
+// forConnection returns the flow for a connection, creating it on first use.
+// The entry is dropped when stop closes or the manager context ends.
+func (fs *submissionFlows) forConnection(id string, stop <-chan struct{}) *submissionFlow {
+	fs.mu.Lock()
+	defer fs.mu.Unlock()
+	if f, ok := fs.flows[id]; ok {
+		return f
+	}
+	f := &submissionFlow{
+		rt:        fs.rt,
+		peer:      fs.peer,
+		ctx:       fs.ctx,
+		opts:      fs.opts,
+		stop:      stop,
+		announced: make(map[string]struct{}),
+	}
+	fs.flows[id] = f
+	go func() {
+		select {
+		case <-stop:
+		case <-fs.ctx.Done():
+		}
+		fs.mu.Lock()
+		delete(fs.flows, id)
+		fs.mu.Unlock()
+	}()
+	return f
 }
 
 // submissionFlow carries the per-connection state that the message-submission
@@ -87,6 +129,7 @@ type submissionFlow struct {
 	peer *Peer
 	ctx  context.Context
 	opts submissionFlowOptions
+	stop <-chan struct{}
 
 	mu          sync.Mutex
 	announced   map[string]struct{}
@@ -106,7 +149,11 @@ func (f *submissionFlow) requestIDs(server *messagesubmission.Server) error {
 	ack := f.outstanding
 	f.outstanding = 0
 	f.mu.Unlock()
-	return server.RequestMessageIdsBlocking(ack, f.opts.requestCount)
+	count := f.opts.requestCount
+	if count == 0 {
+		count = defaultNodeToNodeRequestCount
+	}
+	return server.RequestMessageIdsBlocking(ack, count)
 }
 
 // newIDs returns queued IDs not yet announced on this connection, up to max.
@@ -142,7 +189,7 @@ func (f *submissionFlow) replyIDs(client *messagesubmission.Client, blocking boo
 	go func() {
 		interval := f.opts.holdInterval
 		if interval <= 0 {
-			interval = time.Second
+			interval = defaultNodeToNodeRequestInterval
 		}
 		for {
 			ids := f.newIDs(int(count))
@@ -155,7 +202,7 @@ func (f *submissionFlow) replyIDs(client *messagesubmission.Client, blocking boo
 			select {
 			case <-f.ctx.Done():
 				return
-			case <-f.opts.done:
+			case <-f.stop:
 				return
 			case <-time.After(interval):
 			}
@@ -163,17 +210,17 @@ func (f *submissionFlow) replyIDs(client *messagesubmission.Client, blocking boo
 	}()
 }
 
-func (m *Manager) messageSubmissionConfig(ctx context.Context, topic string, peer *Peer, opts submissionFlowOptions) (messagesubmission.Config, *submissionFlow, error) {
+func (m *Manager) messageSubmissionConfig(ctx context.Context, topic string, peer *Peer, opts submissionFlowOptions) (messagesubmission.Config, *submissionFlows, error) {
 	rt, err := m.topic(topic)
 	if err != nil {
 		return messagesubmission.Config{}, nil, err
 	}
-	flow := &submissionFlow{
-		rt:        rt,
-		peer:      peer,
-		ctx:       ctx,
-		opts:      opts,
-		announced: make(map[string]struct{}),
+	flows := &submissionFlows{
+		rt:    rt,
+		peer:  peer,
+		ctx:   ctx,
+		opts:  opts,
+		flows: make(map[string]*submissionFlow),
 	}
 	cfg := messagesubmission.NewConfig(
 		messagesubmission.WithAuthenticator(pcommon.NewNoOpAuthenticator(rt.logger)),
@@ -183,7 +230,8 @@ func (m *Manager) messageSubmissionConfig(ctx context.Context, topic string, pee
 			if cb.Client == nil {
 				return
 			}
-			flow.replyIDs(cb.Client, blocking, requestCount)
+			flows.forConnection(cb.ConnectionId.String(), cb.Client.StopChan()).
+				replyIDs(cb.Client, blocking, requestCount)
 		}),
 		messagesubmission.WithRequestMessagesFunc(func(cb messagesubmission.CallbackContext, ids [][]byte) {
 			if cb.Client == nil {
@@ -197,6 +245,7 @@ func (m *Manager) messageSubmissionConfig(ctx context.Context, topic string, pee
 			if cb.Server == nil {
 				return
 			}
+			flow := flows.forConnection(cb.ConnectionId.String(), cb.Server.StopChan())
 			flow.mu.Lock()
 			flow.outstanding = uint16(len(ids)) // #nosec G115 -- bounded by the request count.
 			flow.mu.Unlock()
@@ -225,10 +274,11 @@ func (m *Manager) messageSubmissionConfig(ctx context.Context, topic string, pee
 			if cb.Server == nil {
 				return
 			}
+			flow := flows.forConnection(cb.ConnectionId.String(), cb.Server.StopChan())
 			if err := flow.requestIDs(cb.Server); err != nil {
 				rt.callError(ctx, err)
 			}
 		}),
 	)
-	return cfg, flow, nil
+	return cfg, flows, nil
 }

@@ -234,8 +234,12 @@ func TestNodeToNodeSustainedExchangeHasNoProtocolErrors(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = svcB.Close() }()
+	addrB := svcB.ListenAddr()
+	if addrB == nil {
+		t.Fatal("B listen address is nil")
+	}
 	svcA, err := mA.StartNodeToNode(ctx, topic, NodeToNodeConfig{
-		Peers:           []Peer{{Address: svcB.ListenAddr().String(), Source: PeerSourceStatic}},
+		Peers:           []Peer{{Address: addrB.String(), Source: PeerSourceStatic}},
 		RequestInterval: 10 * time.Millisecond,
 		Hooks:           NodeToNodeHooks{OnError: onError},
 	})
