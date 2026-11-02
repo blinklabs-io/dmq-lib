@@ -417,6 +417,7 @@ type nodeToNodePeerConnection struct {
 	lastErr      error
 
 	messageSubmission *messagesubmission.MessageSubmission
+	flows             *submissionFlows
 }
 
 func newNodeToNodePeerConnection(
@@ -444,7 +445,7 @@ func newNodeToNodePeerConnection(
 		return nil, err
 	}
 	go p.forwardErrors()
-	go p.runRequestLoop()
+	go p.startPull()
 	return p, nil
 }
 
@@ -506,7 +507,10 @@ func (p *nodeToNodePeerConnection) handshake(server bool) (version uint16, err e
 }
 
 func (p *nodeToNodePeerConnection) startMessageSubmission(version uint16) error {
-	msgCfg, err := p.service.manager.messageSubmissionConfig(p.service.ctx, p.service.topic.name, &p.peer)
+	msgCfg, flows, err := p.service.manager.messageSubmissionConfig(p.service.ctx, p.service.topic.name, &p.peer, submissionFlowOptions{
+		requestCount: p.service.requestCount(),
+		holdInterval: p.service.requestInterval(),
+	})
 	if err != nil {
 		return err
 	}
@@ -517,6 +521,7 @@ func (p *nodeToNodePeerConnection) startMessageSubmission(version uint16) error 
 		Mode:         protocol.ProtocolModeNodeToNode,
 		Version:      version,
 	}
+	p.flows = flows
 	p.messageSubmission = messagesubmission.New(protoOptions, &msgCfg)
 	p.messageSubmission.Client.Start()
 	p.messageSubmission.Server.Start()
@@ -530,36 +535,15 @@ func (p *nodeToNodePeerConnection) startMessageSubmission(version uint16) error 
 	return nil
 }
 
-func (p *nodeToNodePeerConnection) runRequestLoop() {
-	for {
-		select {
-		case <-p.service.ctx.Done():
-			p.Close()
-			return
-		case <-p.done:
-			return
-		default:
-		}
-		if p.messageSubmission != nil && p.messageSubmission.Server != nil {
-			if err := p.messageSubmission.Server.RequestMessageIdsBlocking(
-				0,
-				p.service.requestCount(),
-			); err != nil {
-				p.sendError(fmt.Errorf("request DMQ message IDs: %w", err))
-				return
-			}
-		}
-		timer := time.NewTimer(p.service.requestInterval())
-		select {
-		case <-p.service.ctx.Done():
-			timer.Stop()
-			p.Close()
-			return
-		case <-p.done:
-			timer.Stop()
-			return
-		case <-timer.C:
-		}
+// startPull sends the first ID request; each reply triggers the next.
+func (p *nodeToNodePeerConnection) startPull() {
+	if p.messageSubmission == nil || p.messageSubmission.Server == nil {
+		return
+	}
+	server := p.messageSubmission.Server
+	flow := p.flows.forConnection(p.connectionID().String(), server.StopChan())
+	if err := flow.start(server); err != nil {
+		p.sendError(fmt.Errorf("request DMQ message IDs: %w", err))
 	}
 }
 

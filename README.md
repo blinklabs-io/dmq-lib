@@ -247,10 +247,18 @@ service. Node-to-node networking accepts and relays messages from remote peers,
 so `StartNodeToNode` requires an explicit authentication decision: it returns
 `ErrAuthenticationRequired` unless the topic sets either
 `Authentication.Required` (verify messages) or `Authentication.AllowUnauthenticated`
-(deliberately skip verification). Setting `Required` auto-provisions a default
-KES verifier when none is supplied.
+(deliberately skip verification). Setting `Required` needs an authenticator from the topic or the Manager;
+`RegisterTopic` returns `ErrAuthenticatorRequired` otherwise.
 
 ```go
+// auth is a gOuroboros MessageAuthenticator built with
+// pcommon.NewMessageAuthenticator from chain-state lookups (stake
+// distribution, current slot, operational certificate issue numbers).
+m := dmq.NewManager(dmq.ManagerConfig{
+    Signer:        signer,
+    Authenticator: auth,
+})
+
 err := m.RegisterTopic("governance", dmq.TopicConfig{
     NetworkMagic:   764824073,
     Authentication: dmq.AuthenticationConfig{Required: true},
@@ -278,9 +286,9 @@ message-submission protocol.
 To run node-to-node networking without verification (for example in trusted test
 setups), set `Authentication.AllowUnauthenticated` to `true`. The service then
 starts but logs a warning that remote messages are relayed after only message-id
-and TTL checks. Note that the default KES verifier checks the KES signature and
-operational certificate but not active-SPO-pool membership, which still requires
-a caller-supplied authenticator backed by ledger state.
+and TTL checks. Verification requires a caller-supplied gOuroboros authenticator
+backed by chain state (stake distribution, current slot, and operational
+certificate issue numbers).
 
 ## Development
 

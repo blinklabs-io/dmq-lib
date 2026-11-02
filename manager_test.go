@@ -35,6 +35,7 @@ import (
 	"github.com/blinklabs-io/dingo/peergov"
 	"github.com/blinklabs-io/gouroboros/cbor"
 	"github.com/blinklabs-io/gouroboros/kes"
+	pcommon "github.com/blinklabs-io/gouroboros/protocol/common"
 	"github.com/blinklabs-io/gouroboros/protocol/localmessagesubmission"
 	"github.com/blinklabs-io/gouroboros/protocol/localstatequery"
 )
@@ -195,6 +196,77 @@ func TestNodeToNodeServiceRoundTrip(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("timed out waiting for node-to-node message")
+	}
+}
+
+func TestNodeToNodeSustainedExchangeHasNoProtocolErrors(t *testing.T) {
+	ctx := context.Background()
+	const topic = "governance"
+	signer := testSigner(t)
+	mA := NewManager(ManagerConfig{Signer: signer})
+	mB := NewManager(ManagerConfig{Signer: signer})
+	for _, m := range []*Manager{mA, mB} {
+		if err := m.RegisterTopic(topic, TopicConfig{
+			NetworkMagic:   42,
+			Authentication: AuthenticationConfig{AllowUnauthenticated: true},
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	subB, err := mB.Subscribe(topic)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = subB.Close() }()
+	errs := make(chan error, 16)
+	onError := func(_ context.Context, _ string, err error) {
+		select {
+		case errs <- err:
+		default:
+		}
+	}
+	svcB, err := mB.StartNodeToNode(ctx, topic, NodeToNodeConfig{
+		ListenAddress:   "127.0.0.1:0",
+		RequestInterval: 10 * time.Millisecond,
+		Hooks:           NodeToNodeHooks{OnError: onError},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = svcB.Close() }()
+	addrB := svcB.ListenAddr()
+	if addrB == nil {
+		t.Fatal("B listen address is nil")
+	}
+	svcA, err := mA.StartNodeToNode(ctx, topic, NodeToNodeConfig{
+		Peers:           []Peer{{Address: addrB.String(), Source: PeerSourceStatic}},
+		RequestInterval: 10 * time.Millisecond,
+		Hooks:           NodeToNodeHooks{OnError: onError},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = svcA.Close() }()
+	waitForPeerCount(t, svcA, 1)
+
+	const total = 3
+	for i := 0; i < total; i++ {
+		if _, err := mA.Publish(ctx, topic, []byte{byte(i)}); err != nil {
+			t.Fatal(err)
+		}
+		select {
+		case <-subB.C:
+		case err := <-errs:
+			t.Fatalf("protocol error: %v", err)
+		case <-time.After(5 * time.Second):
+			t.Fatalf("timed out waiting for message %d", i)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	select {
+	case err := <-errs:
+		t.Fatalf("protocol error: %v", err)
+	default:
 	}
 }
 
@@ -396,8 +468,8 @@ func TestLocalMessageSubmissionConfigUsesManagerClock(t *testing.T) {
 
 func TestTopologyParsing(t *testing.T) {
 	cfg, err := ReadTopology(strings.NewReader(`{
-		"localRoots": [{"accessPoints":[{"address":"relay.local","port":3001}],"advertise":true,"trustable":true,"valency":1,"warmValency":2}],
-		"publicRoots": [{"accessPoints":[{"address":"relay.public","port":3002}],"advertise":true,"valency":3,"warmValency":4}],
+		"localRoots": [{"accessPoints":[{"address":"relay.local","port":3001}],"advertise":true,"trustable":true,"valency":1,"warmValency":1}],
+		"publicRoots": [{"accessPoints":[{"address":"relay.public","port":3002}],"advertise":true,"valency":1,"warmValency":1}],
 		"bootstrapPeers": [{"address":"bootstrap","port":3003}],
 		"useLedgerAfterSlot": 42
 	}`))
@@ -555,8 +627,39 @@ func TestDingoLedgerPeerProviderAdapterRejectsRelayOnlyByDefault(t *testing.T) {
 	}
 }
 
-func TestRegisterTopicInitializesDefaultAuthenticator(t *testing.T) {
+type testStakeAuthority struct{}
+
+func (testStakeAuthority) PoolActiveStake(pcommon.PoolKeyHash) (uint64, error) {
+	return 1, nil
+}
+
+func testAuthenticator(t *testing.T) *pcommon.MessageAuthenticator {
+	t.Helper()
+	auth, err := pcommon.NewMessageAuthenticator(pcommon.MessageAuthenticatorConfig{
+		StakeAuthority:        testStakeAuthority{},
+		CurrentSlot:           func() (uint64, error) { return 1, nil },
+		PoolOpCertIssueNumber: func(pcommon.PoolKeyHash) (uint64, bool, error) { return 0, false, nil },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return auth
+}
+
+func TestRegisterTopicRequiresAuthenticator(t *testing.T) {
 	m := NewManager(ManagerConfig{})
+	err := m.RegisterTopic("topic", TopicConfig{Authentication: AuthenticationConfig{Required: true}})
+	if !errors.Is(err, ErrAuthenticatorRequired) {
+		t.Fatalf("RegisterTopic error = %v, want ErrAuthenticatorRequired", err)
+	}
+	if _, err := m.topic("topic"); !errors.Is(err, ErrTopicNotFound) {
+		t.Fatalf("topic registered despite error: %v", err)
+	}
+}
+
+func TestRegisterTopicUsesManagerAuthenticator(t *testing.T) {
+	auth := testAuthenticator(t)
+	m := NewManager(ManagerConfig{Authenticator: auth})
 	if err := m.RegisterTopic("topic", TopicConfig{Authentication: AuthenticationConfig{Required: true}}); err != nil {
 		t.Fatal(err)
 	}
@@ -564,8 +667,8 @@ func TestRegisterTopicInitializesDefaultAuthenticator(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rt.cfg.Authentication.Authenticator == nil {
-		t.Fatal("expected default authenticator")
+	if rt.cfg.Authentication.Authenticator != auth {
+		t.Fatal("expected manager authenticator")
 	}
 }
 
@@ -964,7 +1067,7 @@ type mockDingoLedgerPeerProvider struct {
 	err    error
 }
 
-func (m *mockDingoLedgerPeerProvider) GetPoolRelays() ([]peergov.PoolRelay, error) {
+func (m *mockDingoLedgerPeerProvider) GetPoolRelays(context.Context) ([]peergov.PoolRelay, error) {
 	return m.relays, m.err
 }
 
@@ -1118,7 +1221,7 @@ func TestStartNodeToNodeNoWarnWhenAuthenticationRequired(t *testing.T) {
 	m := NewManager(ManagerConfig{Logger: logger, Signer: testSigner(t)})
 	cfg := TopicConfig{
 		NetworkMagic:   42,
-		Authentication: AuthenticationConfig{Required: true},
+		Authentication: AuthenticationConfig{Required: true, Authenticator: testAuthenticator(t)},
 	}
 	if err := m.RegisterTopic("topic", cfg); err != nil {
 		t.Fatalf("RegisterTopic: %v", err)

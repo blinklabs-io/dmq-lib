@@ -33,6 +33,12 @@ var (
 	// signing provider) and none is configured or active.
 	ErrSignerRequired = errors.New("dmq signer is required")
 
+	// ErrAuthenticatorRequired is returned by Manager.RegisterTopic when
+	// Authentication.Required is set and neither the topic nor the Manager
+	// supplies an authenticator. gOuroboros requires authoritative stake, slot
+	// and operational-certificate lookups, so no default can be provisioned.
+	ErrAuthenticatorRequired = errors.New("dmq authenticator is required")
+
 	// ErrDuplicateMessage is returned when a submitted message's ID was
 	// already accepted within the topic's duplicate-suppression window.
 	ErrDuplicateMessage = errors.New("dmq message already received")
