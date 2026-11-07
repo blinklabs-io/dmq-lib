@@ -3,7 +3,7 @@ module github.com/blinklabs-io/dmq-lib
 go 1.26.10
 
 require (
-	github.com/blinklabs-io/bursa v0.21.0
+	github.com/blinklabs-io/bursa v0.21.1
 	github.com/blinklabs-io/dingo v0.89.0
 	github.com/blinklabs-io/gouroboros v0.216.0
 	golang.org/x/crypto v0.58.0
@@ -14,7 +14,7 @@ require (
 	github.com/Microsoft/go-winio v0.6.4 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bits-and-blooms/bitset v1.25.0 // indirect
-	github.com/blinklabs-io/go-bip39 v0.2.0 // indirect
+	github.com/blinklabs-io/go-bip39 v0.2.1 // indirect
 	github.com/blinklabs-io/plutigo v0.10.0 // indirect
 	github.com/btcsuite/btcd/btcec/v2 v2.5.1 // indirect
 	github.com/btcsuite/btcd/btcutil v1.2.0 // indirect
