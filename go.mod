@@ -4,7 +4,7 @@ go 1.26.10
 
 require (
 	github.com/blinklabs-io/bursa v0.21.1
-	github.com/blinklabs-io/dingo v0.89.0
+	github.com/blinklabs-io/dingo v0.90.5
 	github.com/blinklabs-io/gouroboros v0.217.0
 	golang.org/x/crypto v0.58.0
 )
