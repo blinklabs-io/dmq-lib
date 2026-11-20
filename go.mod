@@ -3,7 +3,7 @@ module github.com/blinklabs-io/dmq-lib
 go 1.26.11
 
 require (
-	github.com/blinklabs-io/bursa v0.24.0
+	github.com/blinklabs-io/bursa v0.25.0
 	github.com/blinklabs-io/dingo v0.92.3
 	github.com/blinklabs-io/gouroboros v0.219.0
 	golang.org/x/crypto v0.59.0
