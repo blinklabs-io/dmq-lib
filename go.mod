@@ -6,7 +6,7 @@ require (
 	github.com/blinklabs-io/bursa v0.24.0
 	github.com/blinklabs-io/dingo v0.92.3
 	github.com/blinklabs-io/gouroboros v0.219.0
-	golang.org/x/crypto v0.58.0
+	golang.org/x/crypto v0.59.0
 )
 
 require (
@@ -33,7 +33,7 @@ require (
 	github.com/prometheus/procfs v0.22.0 // indirect
 	github.com/utxorpc/go-codegen v0.19.2 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
-	golang.org/x/sys v0.49.0 // indirect
-	golang.org/x/text v0.43.0 // indirect
+	golang.org/x/sys v0.50.0 // indirect
+	golang.org/x/text v0.44.0 // indirect
 	google.golang.org/protobuf v1.36.12 // indirect
 )
